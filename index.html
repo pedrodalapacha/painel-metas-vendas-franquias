@@ -1,0 +1,2037 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Painel de metas de vendas · Grupo Horizonte (dados fictícios)</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Cpath d='M50 8C50 8 22 44 22 62a28 28 0 0 0 56 0C78 44 50 8 50 8Z' fill='%232B64B0'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.9.0/d3.min.js"></script>
+<style>
+:root{--font-anthropic-sans:'Inter',system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;--font-anthropic-serif:'Inter',system-ui,sans-serif;
+--cds-gap-xs:4px;--cds-gap-sm:8px;--cds-gap-md:16px;--cds-gap-lg:24px;--cds-gap-xl:32px;--cds-pad-xs:4px;--cds-pad-sm:8px;--cds-pad-md:12px;--cds-pad-lg:20px;--cds-pad-xl:28px;
+--cds-font-size-caption:12px;--cds-font-size-body:14px;--cds-font-size-heading:16px;--cds-font-size-title:28px;--cds-font-weight-medium:500;--cds-radius:10px;--cds-dur-slow:.3s;--cds-shadow-popover:0 8px 24px rgba(0,0,0,.18)}
+html,body{margin:0;padding:0}
+[hidden]{display:none!important}
+body{background:#F3F6F6;-webkit-font-smoothing:antialiased}
+body.dark{background:#1F252D}
+.ag-upd{margin:6px 0 0;font-size:12px;color:rgba(255,255,255,.65);position:relative;z-index:1}
+.ag-upd.err{color:#FFC7CB}
+.ag-demo{display:inline-block;margin:6px 0 0;padding:3px 10px;border-radius:999px;background:rgba(255,255,255,.14);font-size:12px;color:#fff;position:relative;z-index:1}
+</style>
+</head>
+<body>
+<script>
+/* Mini-runtime: implementa a API "dash" usada pelo painel, lendo os dados de dados.json */
+var AG_HOJE = Date.UTC(2026, 10, 18, 14, 30); // data de demonstração (hora de Brasília)
+window.dash = (() => {
+  const DEFAULTS = { loja: 'Total', ref: 'Interna' };
+  let params = { ...DEFAULTS };
+  const calcs = [], drawFns = new Map(), dataFns = [];
+  const store = { planilha: { status: 'loading', data: [] }, pesos: { status: 'loading', data: {} } };
+  let meta = { at: null, erro: null };
+  const runAll = () => {
+    dataFns.forEach((fn) => { try { fn(); } catch (e) { console.error(e); } });
+    drawFns.forEach((fn, name) => drawOne(name));
+  };
+  const drawOne = (name) => {
+    const fn = drawFns.get(name); if (!fn) return;
+    document.querySelectorAll('[data-draw="' + name + '"]').forEach((el) => {
+      if (el.closest('[hidden]')) return;
+      try { fn(el); } catch (e) { console.error('draw', name, e); }
+    });
+  };
+  const compute = () => {
+    calcs.forEach(({ id, inputs, fn }) => {
+      try {
+        const ins = inputs.map((i) => store[i] && store[i].status === 'ok' ? store[i].data : null);
+        if (ins.some((x) => x == null)) { store[id] = { status: store.planilha.status, data: [] }; return; }
+        store[id] = { status: 'ok', data: fn(...ins) };
+      } catch (e) { console.error('calc', id, e); store[id] = { status: 'error', data: [], message: String(e) }; }
+    });
+  };
+  const load = async () => {
+    try {
+      const r = await fetch('dados.json', { cache: 'no-store' });
+      const j = await r.json();
+      if (!r.ok || !j.rows) throw new Error(j.erro || ('HTTP ' + r.status));
+      store.planilha = { status: 'ok', data: j.rows };
+      store.pesos = { status: 'ok', data: j.pesos2027 || {} };
+      if (j.base2025) Object.assign(BASE_2025, j.base2025);
+      if (j.hoje) AG_HOJE = Date.parse(j.hoje + 'T14:30:00Z');
+      meta = { at: new Date(), erro: null };
+    } catch (e) {
+      meta = { at: meta.at, erro: String(e.message || e) };
+      if (store.planilha.status !== 'ok') store.planilha = { status: 'error', data: [], message: meta.erro };
+    }
+    compute(); runAll();
+  };
+  let rt; window.addEventListener('resize', () => { clearTimeout(rt); rt = setTimeout(runAll, 150); });
+  const api = {
+    loader() {},
+    calc(id, o) { calcs.push({ id, inputs: o.inputs, fn: o.fn }); },
+    data(id) { const d = store[id] || { status: 'loading', data: [] }; return { ...d, refreshing: false, meta: [] }; },
+    onData(fn) { dataFns.push(fn); try { fn(); } catch (e) {} },
+    draw(name, fn) { if (fn) { drawFns.set(name, fn); } else drawOne(name); },
+    params() { return { ...params }; },
+    setParams(p) { Object.entries(p).forEach(([k, v]) => { if (v == null) delete params[k]; else params[k] = v; }); runAll(); },
+    resetParams() { params = { ...DEFAULTS }; runAll(); },
+    setLink(name) { try { history.replaceState(null, '', '#' + name); } catch (e) {} runAll(); },
+    refresh() { load(); },
+    colors: ['#2B64B0', '#2F6F73', '#7E9A80', '#E1939A', '#283A66', '#9DBB9F', '#5B8FDA', '#B04B55'],
+    _meta: () => meta,
+    _start() { load(); },
+  };
+  return api;
+})();
+</script>
+<style>
+#dash-root{--dash-gutter:0}
+.ag{
+  --ag-blue:#2B64B0;--ag-teal:#2F6F73;--ag-sage:#7E9A80;--ag-rose:#E1939A;--ag-navy:#283A66;--ag-slate:#343E4A;
+  --ag-bg:#F3F6F6;--ag-panel:#FFFFFF;--ag-panel-2:#F7F9F9;--ag-fg:#2B333D;--ag-muted:#66707C;--ag-line:#E1E7E8;--ag-shadow:0 1px 2px rgba(40,58,102,.05),0 6px 20px rgba(40,58,102,.06);
+  --ag-accent:var(--ag-blue);--ag-on-accent:#fff;--ag-ok:#2E8B57;--ag-warn:#B7791F;--ag-bad:#C2414B;
+  --color-fg:var(--ag-fg);--color-fg-muted:var(--ag-muted);--color-panel:var(--ag-panel);--color-bg:var(--ag-bg);--color-border-line:var(--ag-line);
+  --color-ok:var(--ag-ok);--color-warn:var(--ag-warn);--color-bad:var(--ag-bad);
+  --cds-chart-grid:#E8EDEE;--cds-chart-axis:#B9C2C6;--cds-chart-muted:#B4BEC4;--cds-chart-reference:#8A949E;
+  --cds-surface-popover:var(--ag-panel);--cds-border:var(--ag-line);--cds-text-secondary:var(--ag-muted);
+  --ag-r:16px;
+  font-family:var(--font-anthropic-sans);color:var(--ag-fg);background:var(--ag-bg);
+  display:flex;flex-direction:column;gap:20px;padding:0 clamp(12px,3vw,32px) 32px;min-height:100%;
+  transition:background-color .3s ease,color .3s ease
+}
+.ag.dark{
+  --ag-bg:#1F252D;--ag-panel:#2A323C;--ag-panel-2:#313A45;--ag-fg:#ECEFF2;--ag-muted:#A5AFBA;--ag-line:#3A4450;--ag-shadow:0 1px 2px rgba(0,0,0,.25),0 8px 24px rgba(0,0,0,.25);
+  --ag-blue:#5B8FDA;--ag-teal:#4FA3A8;--ag-sage:#9DBB9F;--ag-rose:#EDA6AC;
+  --ag-ok:#5CC08A;--ag-warn:#E2B04E;--ag-bad:#EE6F78;
+  --cds-chart-grid:#38424D;--cds-chart-axis:#55606C;--cds-chart-muted:#6C7782;--cds-chart-reference:#97A2AD
+}
+/* ---------- cabeçalho ---------- */
+.ag-hero{margin:0 calc(-1 * clamp(12px,3vw,32px));padding:20px clamp(12px,3vw,32px) 22px;background:linear-gradient(120deg,#343E4A 0%,#2C3846 55%,#283A66 100%);color:#fff;position:relative;overflow:hidden;display:flex;flex-direction:column;gap:16px}
+.ag-hero::after{content:"";position:absolute;right:-60px;top:-80px;width:340px;height:340px;background:radial-gradient(circle at 30% 40%,rgba(225,147,154,.35),transparent 55%),radial-gradient(circle at 70% 60%,rgba(43,100,176,.45),transparent 60%),radial-gradient(circle at 50% 20%,rgba(126,154,128,.35),transparent 55%);filter:blur(10px);pointer-events:none}
+.ag-hero-top{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;position:relative;z-index:1}
+.ag-logo{display:flex;align-items:center;gap:12px}
+.ag-logo img{display:block;height:clamp(40px,5vw,56px);width:auto}
+.ag-word{display:flex;flex-direction:column;line-height:1}
+.ag-word small{font-size:10px;letter-spacing:.32em;opacity:.85;margin-left:2px}
+.ag-word strong{font-size:26px;font-weight:500;letter-spacing:.04em}
+.ag-hero-tools{display:flex;gap:8px;align-items:center}
+.ag-iconbtn{font:inherit;font-size:13px;display:inline-flex;align-items:center;gap:6px;border:1px solid rgba(255,255,255,.25);background:rgba(255,255,255,.08);color:#fff;border-radius:999px;padding:7px 12px;cursor:pointer;transition:background .2s}
+.ag-iconbtn:hover{background:rgba(255,255,255,.18)}
+.ag-iconbtn svg{width:16px;height:16px}
+.ag .ico-sun{display:none}.ag.dark .ico-sun{display:inline}.ag.dark .ico-moon{display:none}
+.ag-hero h1{margin:0;font-size:clamp(24px,3.2vw,34px);font-weight:500;letter-spacing:-.01em;position:relative;z-index:1}
+.ag-take{margin:4px 0 0;color:rgba(255,255,255,.82);font-size:15px;max-width:62rem;position:relative;z-index:1;line-height:1.5}
+.ag-filters{display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end;position:relative;z-index:1}
+.ag-filters label{display:flex;flex-direction:column;gap:4px;font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:rgba(255,255,255,.7)}
+.ag-filters select{font:inherit;font-size:14px;text-transform:none;letter-spacing:0;color:#fff;background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.22);border-radius:12px;padding:8px 12px;min-width:10rem;cursor:pointer}
+.ag-filters select option{color:#2B333D}
+.ag-seg{display:inline-flex;background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.22);border-radius:12px;padding:3px;gap:2px}
+.ag-seg button{font:inherit;font-size:13px;background:none;color:rgba(255,255,255,.8);border:0;border-radius:9px;padding:6px 12px;cursor:pointer;transition:background .2s,color .2s}
+.ag-seg button[aria-pressed=true]{background:#fff;color:#283A66;font-weight:600}
+.ag-clear{font:inherit;font-size:13px;border:0;background:var(--ag-rose,#E1939A);color:#3a2226;font-weight:600;border-radius:12px;padding:9px 14px;cursor:pointer;display:inline-flex;align-items:center;gap:6px;transition:opacity .2s,transform .2s}
+.ag-clear:disabled{opacity:.35;cursor:default}
+.ag-clear:not(:disabled):hover{transform:translateY(-1px)}
+/* ---------- abas ---------- */
+.ag-tabs{display:flex;gap:6px;flex-wrap:wrap;background:var(--ag-panel);border:1px solid var(--ag-line);border-radius:999px;padding:5px;box-shadow:var(--ag-shadow);align-self:flex-start;max-width:100%;overflow-x:auto}
+.ag-tabs button{font:inherit;font-size:14px;background:none;border:0;color:var(--ag-muted);padding:8px 16px;border-radius:999px;cursor:pointer;white-space:nowrap;transition:background .2s,color .2s}
+.ag-tabs button:hover{color:var(--ag-fg)}
+.ag-tabs button[aria-selected=true]{background:var(--ag-accent);color:var(--ag-on-accent);font-weight:600}
+.ag-tabs button.vend{color:var(--ag-teal)}
+.ag-tabs button.vend[aria-selected=true]{background:var(--ag-teal);color:#fff}
+/* ---------- blocos ---------- */
+.ag-sec{display:flex;flex-direction:column;gap:16px}
+.ag-kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,12.5rem),1fr));gap:14px}
+.ag-kpi{background:var(--ag-panel);border:1px solid var(--ag-line);border-radius:var(--ag-r);padding:16px 18px;display:flex;flex-direction:column;gap:6px;box-shadow:var(--ag-shadow);position:relative;overflow:hidden}
+.ag-kpi::before{content:"";position:absolute;left:0;top:0;bottom:0;width:4px;background:var(--k,var(--ag-blue))}
+.ag-kpi h3{margin:0;font-size:12px;font-weight:500;letter-spacing:.04em;text-transform:uppercase;color:var(--ag-muted)}
+.ag-big{font-size:clamp(22px,2.4vw,28px);font-weight:600;letter-spacing:-.01em;font-variant-numeric:tabular-nums;line-height:1.15}
+.ag-sub{font-size:12.5px;color:var(--ag-muted);font-variant-numeric:tabular-nums;line-height:1.4}
+.ag-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,27rem),1fr));gap:16px}
+.ag-card{background:var(--ag-panel);border:1px solid var(--ag-line);border-radius:var(--ag-r);padding:20px;display:flex;flex-direction:column;gap:10px;min-width:0;box-shadow:var(--ag-shadow)}
+.ag-card.wide{grid-column:1/-1}
+.ag-card h2{margin:0;font-size:16px;font-weight:600;letter-spacing:-.005em}
+.ag-card .ag-note{margin:0;font-size:12.5px;color:var(--ag-muted);line-height:1.5}
+.ag-chart{position:relative;min-height:240px;width:100%}
+.ag-insight{margin:4px 0 0;padding:10px 14px;background:var(--ag-panel-2);border-radius:12px;font-size:13px;line-height:1.55}
+.tag{display:inline-block;font-size:10px;letter-spacing:.06em;text-transform:uppercase;font-weight:700;padding:2px 8px;border-radius:999px;margin-right:6px;vertical-align:1px}
+.tag.ev{background:color-mix(in srgb,var(--ag-blue) 16%,transparent);color:var(--ag-blue)}
+.tag.hy{background:color-mix(in srgb,var(--ag-rose) 26%,transparent);color:#B04B55}
+.ag.dark .tag.hy{color:var(--ag-rose)}
+.ag-legend{display:flex;flex-wrap:wrap;gap:14px;font-size:12px;color:var(--ag-muted)}
+.ag-legend span{display:inline-flex;align-items:center;gap:6px}
+.ag-legend i{display:inline-block;width:12px;height:12px;border-radius:4px}
+.ag-legend i.line{height:3px;border-radius:2px}
+.ag-tbl-wrap{overflow:auto;max-height:34rem;border-radius:12px}
+.ag-tbl-wrap table{border-collapse:separate;border-spacing:0;width:100%;font-size:13px;font-variant-numeric:tabular-nums}
+.ag-tbl-wrap th{position:sticky;top:0;background:var(--ag-panel-2);text-align:right;font-weight:600;font-size:11.5px;letter-spacing:.03em;text-transform:uppercase;color:var(--ag-muted);padding:10px;white-space:nowrap}
+.ag-tbl-wrap th:first-child,.ag-tbl-wrap td:first-child{text-align:left}
+.ag-tbl-wrap td{text-align:right;padding:9px 10px;border-bottom:1px solid var(--ag-line);white-space:nowrap}
+.ag-tbl-wrap tbody tr{transition:background .15s}
+.ag-tbl-wrap tbody tr:hover td{background:color-mix(in srgb,var(--ag-blue) 6%,transparent)}
+.ag-tbl-wrap tr.tot td{font-weight:700;border-bottom:0;background:var(--ag-panel-2)}
+.ag-tbl-wrap tr.sel td{background:color-mix(in srgb,var(--ag-blue) 11%,transparent)}
+.pill{display:inline-block;min-width:3.4rem;text-align:center;padding:2px 8px;border-radius:999px;font-weight:600}
+.pill.ok{background:color-mix(in srgb,var(--ag-ok) 18%,transparent);color:var(--ag-ok)}
+.pill.warn{background:color-mix(in srgb,var(--ag-warn) 20%,transparent);color:var(--ag-warn)}
+.pill.bad{background:color-mix(in srgb,var(--ag-bad) 15%,transparent);color:var(--ag-bad)}
+.pos{color:var(--ag-ok)}.neg{color:var(--ag-bad)}
+.ag-heat{display:grid;gap:4px;font-size:11.5px;font-variant-numeric:tabular-nums}
+.ag-heat div{padding:7px 2px;text-align:center;border-radius:8px;transition:transform .12s}
+.ag-heat div:not(.hd):not(.rl):hover{transform:scale(1.06)}
+.ag-heat .hd{color:var(--ag-muted);background:none;text-transform:uppercase;font-size:10.5px;letter-spacing:.05em}
+.ag-heat .rl{text-align:left;color:var(--ag-fg);background:none;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ag-tip{position:absolute;pointer-events:none;background:var(--ag-panel);color:var(--ag-fg);border:1px solid var(--ag-line);border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,.18);padding:8px 10px;font-size:12px;z-index:5;white-space:nowrap;line-height:1.5}
+.ag-tip .t{color:var(--ag-muted);font-weight:600}
+.ag-ins{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,24rem),1fr));gap:14px;margin:0;padding:0;list-style:none}
+.ag-ins li{background:var(--ag-panel);border:1px solid var(--ag-line);border-radius:var(--ag-r);padding:16px 18px;font-size:14px;line-height:1.6;box-shadow:var(--ag-shadow)}
+.ag-ins h3{margin:0 0 8px;font-size:15px;font-weight:600;color:var(--ag-fg)}
+.ag-ins h3 .tag{display:table;margin:0 0 6px}
+.ag-foot{font-size:12.5px;color:var(--ag-muted);line-height:1.6;background:var(--ag-panel);border:1px solid var(--ag-line);border-radius:var(--ag-r);padding:16px 18px}
+.ag-foot ul{margin:6px 0 0;padding-left:1.1rem}
+.ag b{font-weight:600}
+.md-tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,15rem),1fr));gap:14px}
+.md-tile{border-radius:14px;padding:16px 18px;background:var(--ag-panel-2);border:1px solid var(--ag-line);display:flex;flex-direction:column;gap:10px}
+.md-tile h3{margin:0;font-size:13px;font-weight:600;display:flex;align-items:center;gap:8px}
+.md-tile h3 i{width:10px;height:10px;border-radius:50%;display:inline-block}
+.md-vals{display:flex;align-items:flex-end;gap:12px;font-variant-numeric:tabular-nums}
+.md-y{display:flex;flex-direction:column;gap:2px}
+.md-y small{font-size:11px;color:var(--ag-muted);letter-spacing:.05em}
+.md-y span{font-size:16px;color:var(--ag-muted)}
+.md-y.now span{font-size:26px;font-weight:700;color:var(--ag-fg)}
+.md-arrow{color:var(--ag-muted);font-size:18px;padding-bottom:4px}
+.md-delta{align-self:flex-start;font-weight:700;font-size:13px;padding:3px 10px;border-radius:999px}
+.md-delta.up{background:color-mix(in srgb,var(--ag-ok) 16%,transparent);color:var(--ag-ok)}
+.md-delta.down{background:color-mix(in srgb,var(--ag-bad) 14%,transparent);color:var(--ag-bad)}
+.md-bars{display:flex;flex-direction:column;gap:6px}
+.md-bar{display:grid;grid-template-columns:2.6rem 1fr;align-items:center;gap:8px;font-size:11px;color:var(--ag-muted)}
+.md-bar div{height:10px;border-radius:999px;background:var(--ag-line);overflow:hidden}
+.md-bar div i{display:block;height:100%;border-radius:999px}
+/* ---------- meta diária (vendedoras) ---------- */
+.dd{--c-des:#D9707B;--c-int:var(--ag-teal);--c-rede:var(--ag-blue);display:flex;flex-direction:column;gap:22px}
+.ag.dark .dd{--c-des:#F08E98}
+.dd-head{display:flex;justify-content:space-between;align-items:flex-end;gap:12px;flex-wrap:wrap}
+.dd-hi{margin:0;font-size:clamp(26px,3.4vw,36px);font-weight:700;letter-spacing:-.02em;line-height:1.1}
+.dd-date{margin:4px 0 0;font-size:15px;color:var(--ag-muted)}
+.dd-legend{display:flex;gap:16px;flex-wrap:wrap;font-size:13px;color:var(--ag-muted)}
+.dd-legend span{display:inline-flex;align-items:center;gap:7px}
+.dd-legend i{width:10px;height:10px;border-radius:50%}
+.dd-chips{display:flex;gap:8px;overflow-x:auto;padding:2px 2px 6px;scrollbar-width:none}
+.dd-chips::-webkit-scrollbar{display:none}
+.dd-chip{font:inherit;font-size:14px;font-weight:600;white-space:nowrap;border:1px solid var(--ag-line);background:var(--ag-panel);color:var(--ag-fg);border-radius:999px;padding:10px 16px;cursor:pointer;transition:all .2s;box-shadow:var(--ag-shadow)}
+.dd-chip:hover{transform:translateY(-1px)}
+.dd-chip[aria-pressed=true]{background:var(--ag-fg);color:var(--ag-bg);border-color:var(--ag-fg)}
+/* foco numa loja */
+.dd-focus{display:grid;grid-template-columns:minmax(0,1.25fr) minmax(0,1fr);gap:18px}
+@media (max-width:760px){.dd-focus{grid-template-columns:1fr}}
+.dd-hero{border-radius:24px;padding:28px;color:var(--ag-fg);background:var(--ag-panel);border:1px solid var(--ag-line);box-shadow:var(--ag-shadow);display:flex;flex-direction:column;gap:18px;position:relative;overflow:hidden}
+.dd-hero::after{content:"";position:absolute;right:-70px;top:-70px;width:220px;height:220px;border-radius:50%;background:color-mix(in srgb,var(--c-des) 9%,transparent)}
+.dd-hero-top{display:flex;justify-content:space-between;align-items:center;gap:12px}
+.dd-tag{font-size:12px;letter-spacing:.12em;text-transform:uppercase;font-weight:700;color:var(--c-des)}
+.dd-store{font-size:13px;font-weight:600;background:color-mix(in srgb,var(--c-des) 14%,transparent);color:var(--c-des);padding:5px 12px;border-radius:999px;position:relative;z-index:1}
+.dd-hero-mid{display:flex;align-items:center;gap:24px;position:relative;z-index:1;flex:1}
+.dd-hero-mid>div{min-width:0;flex:1}
+@media (max-width:520px){.dd-hero-mid{flex-direction:column;align-items:flex-start}}
+.dd-ring{width:132px;height:132px;flex:none}
+.dd-ring text{fill:var(--c-des);font-weight:700}
+.dd-big{font-size:clamp(34px,4.6vw,50px);font-weight:800;letter-spacing:-.03em;line-height:1;font-variant-numeric:tabular-nums;color:var(--c-des)}
+.dd-sub{font-size:15px;color:var(--ag-muted);margin-top:8px;line-height:1.45}
+.dd-sub b{font-weight:700;color:var(--ag-fg)}
+.dd-lbl{font-size:12px;letter-spacing:.08em;text-transform:uppercase;font-weight:600;color:var(--ag-muted);margin-bottom:4px}
+.dd-nums{display:flex;gap:14px 28px;flex-wrap:wrap;align-items:flex-end}
+.dd-sold{font-size:clamp(28px,4vw,38px);font-weight:800;letter-spacing:-.02em;line-height:1;font-variant-numeric:tabular-nums;color:var(--ag-fg)}
+.dd-row.sold b{font-size:18px}
+.dd-side{display:flex;flex-direction:column;gap:18px}
+.dd-mini{background:var(--ag-panel);border:1px solid var(--ag-line);border-radius:22px;padding:22px;box-shadow:var(--ag-shadow);display:flex;flex-direction:column;gap:12px;flex:1}
+.dd-mini-top{display:flex;align-items:center;gap:8px;font-size:13px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--ag-muted)}
+.dd-mini-top i{width:10px;height:10px;border-radius:50%;background:var(--mc)}
+.dd-mini-val{font-size:clamp(30px,4vw,38px);font-weight:800;letter-spacing:-.02em;color:var(--mc);font-variant-numeric:tabular-nums;line-height:1}
+.dd-mini-val small{font-size:15px;font-weight:600;color:var(--ag-muted);margin-left:6px;letter-spacing:0}
+.dd-track{height:8px;border-radius:999px;background:var(--ag-panel-2);overflow:hidden}
+.dd-track i{display:block;height:100%;border-radius:999px;background:var(--mc);transition:width .6s ease}
+.dd-note{font-size:13px;color:var(--ag-muted);font-variant-numeric:tabular-nums}
+.dd-note b{color:var(--ag-fg);font-weight:600}
+/* todas as lojas */
+.dd-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,15.5rem),1fr));gap:14px}
+.dd-tile{background:var(--ag-panel);border:1px solid var(--ag-line);border-radius:20px;padding:18px;box-shadow:var(--ag-shadow);display:flex;flex-direction:column;gap:14px;cursor:pointer;transition:transform .18s}
+.dd-tile:hover{transform:translateY(-2px)}
+.dd-tile.tot{background:var(--ag-fg);color:var(--ag-bg);border-color:var(--ag-fg)}
+.dd-tile.tot .dd-row span{color:inherit;opacity:.75}
+.dd-tile-h{display:flex;justify-content:space-between;align-items:baseline;gap:8px}
+.dd-tile-h strong{font-size:20px;font-weight:800;letter-spacing:-.01em}
+.dd-tile-h span{font-size:12px;opacity:.6}
+.dd-row{display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:8px;font-variant-numeric:tabular-nums}
+.dd-row i{width:9px;height:9px;border-radius:50%;background:var(--mc)}
+.dd-row span{font-size:13px;color:var(--ag-muted)}
+.dd-row b{font-size:18px;font-weight:700}
+.dd-row.des b{font-size:24px;color:var(--c-des)}
+.dd-tile.tot .dd-row.des b{color:#F5A3AB}
+.dd-row-bar{grid-column:1/-1;height:6px;border-radius:999px;background:var(--ag-panel-2);overflow:hidden;margin-top:-2px}
+.dd-tile.tot .dd-row-bar{background:rgba(255,255,255,.15)}
+.dd-row-bar i{display:block;height:100%;width:0;border-radius:999px;background:var(--c-des)}
+.dd-done{color:var(--ag-ok)!important}
+.dd-foot{font-size:12.5px;color:var(--ag-muted);text-align:center;line-height:1.6}
+.dd-focus{grid-template-columns:1fr!important}
+.dd-hero{--hc:var(--ag-blue)}
+.dd-hero::after{background:color-mix(in srgb,var(--hc) 10%,transparent)}
+.dd-hero::before{content:"";position:absolute;left:-50px;bottom:-90px;width:200px;height:200px;border-radius:50%;background:color-mix(in srgb,var(--ag-sage) 12%,transparent)}
+.dd-tag,.dd-big,.dd-ring text{color:var(--hc);fill:var(--hc)}
+.dd-store{background:color-mix(in srgb,var(--hc) 14%,transparent);color:var(--hc)}
+.dd-falta{font-size:clamp(28px,4vw,38px);font-weight:800;letter-spacing:-.02em;line-height:1;font-variant-numeric:tabular-nums;color:var(--ag-muted)}
+.dd-falta.ok{color:var(--ag-ok)}
+.dd-tile{--tc:var(--ag-blue);position:relative;overflow:hidden;gap:16px;padding:20px}
+.dd-tile::before{content:"";position:absolute;left:0;top:0;bottom:0;width:5px;background:var(--tc)}
+.dd-tile-body{display:flex;align-items:center;gap:16px}
+.dd-tring{width:76px;height:76px;flex:none}
+.dd-tring text{fill:var(--tc);font-weight:700}
+.dd-tnums{display:flex;flex-direction:column;gap:10px;min-width:0;flex:1}
+.dd-tl{font-size:11px;letter-spacing:.07em;text-transform:uppercase;font-weight:600;color:var(--ag-muted)}
+.dd-tmeta{font-size:26px;font-weight:800;letter-spacing:-.02em;line-height:1.05;color:var(--tc);font-variant-numeric:tabular-nums}
+.dd-tsold{font-size:20px;font-weight:700;line-height:1.05;font-variant-numeric:tabular-nums}
+.dd-tfoot{font-size:12.5px;font-weight:600;padding:6px 10px;border-radius:999px;align-self:flex-start;background:color-mix(in srgb,var(--tc) 12%,transparent);color:var(--tc)}
+.dd-tfoot.ok{background:color-mix(in srgb,var(--ag-ok) 16%,transparent);color:var(--ag-ok)}
+/* ---------- meta anual ---------- */
+.tag.pr{background:color-mix(in srgb,var(--ag-sage) 30%,transparent);color:var(--ag-teal)}
+.ag-legenda-tags{margin:0;font-size:12.5px;color:var(--ag-muted)}
+.pv-big{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,19rem),1fr));gap:16px}
+.pv-q{position:relative;overflow:hidden;padding-left:24px}.pv-q::before{content:"";position:absolute;left:0;top:0;bottom:0;width:5px;background:var(--k)}
+.pv-q h3{margin:0;font-size:13px;font-weight:600;color:var(--ag-muted)}
+.pv-q .ag-big{font-size:clamp(28px,3.4vw,38px)}
+.pv-faixa{font-size:13px;font-weight:600;color:var(--k)}
+.pv-leit{margin:0;font-size:13px;line-height:1.5;color:var(--ag-fg)}
+.wk-camp{display:block;margin-top:3px;font-size:10.5px;font-weight:600;letter-spacing:0;text-transform:none;color:var(--ag-teal)}
+.pv-list{margin:0;padding-left:18px;display:flex;flex-direction:column;gap:8px;font-size:13px;line-height:1.5;color:var(--ag-fg)}.pv-list b{font-weight:600}
+.yr-wrap{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,24rem),1fr));gap:16px}
+.yr-card{background:var(--ag-panel);border:1px solid var(--ag-line);border-radius:var(--ag-r);padding:20px 22px;box-shadow:var(--ag-shadow);display:flex;flex-direction:column;gap:12px;position:relative;overflow:hidden}
+.yr-card::before{content:"";position:absolute;left:0;top:0;right:0;height:4px;background:var(--yc,var(--ag-blue))}
+.yr-top{display:flex;justify-content:space-between;align-items:baseline;gap:10px;flex-wrap:wrap}
+.yr-tt{font-size:12px;letter-spacing:.06em;text-transform:uppercase;font-weight:600;color:var(--ag-muted)}
+.yr-who{font-size:12px;color:var(--ag-muted)}
+.yr-main{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap}
+.yr-pct{font-size:clamp(34px,4.4vw,46px);font-weight:700;letter-spacing:-.02em;font-variant-numeric:tabular-nums;line-height:1}
+.yr-of{font-size:14px;color:var(--ag-muted);font-variant-numeric:tabular-nums}
+.yr-bar{position:relative;height:14px;border-radius:999px;background:var(--ag-panel-2);border:1px solid var(--ag-line);overflow:hidden}
+.yr-bar i{position:absolute;left:0;top:0;bottom:0;border-radius:999px;background:var(--yc,var(--ag-blue))}
+.yr-bar b{position:absolute;top:-3px;bottom:-3px;width:2px;background:var(--ag-fg);opacity:.55}
+.yr-legend{font-size:11.5px;color:var(--ag-muted)}
+.yr-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(7.5rem,1fr));gap:10px}
+.yr-k{background:var(--ag-panel-2);border-radius:12px;padding:10px 12px}
+.yr-k span{display:block;font-size:11px;letter-spacing:.05em;text-transform:uppercase;color:var(--ag-muted);font-weight:600}
+.yr-k strong{display:block;font-size:18px;font-weight:700;font-variant-numeric:tabular-nums;margin-top:2px}
+.yr-k small{display:block;font-size:11.5px;color:var(--ag-muted);margin-top:2px}
+.vd-year{font-size:12.5px;padding:8px 10px;border-radius:10px;background:var(--ag-panel-2);color:var(--ag-muted);font-variant-numeric:tabular-nums}
+.vd-year b{color:var(--ag-fg)}
+/* ---------- vendedoras ---------- */
+.vd-head{display:flex;flex-wrap:wrap;gap:16px;align-items:stretch}
+.vd-banner{flex:1 1 22rem;background:linear-gradient(120deg,var(--ag-teal),var(--ag-blue));color:#fff;border-radius:var(--ag-r);padding:20px 24px;box-shadow:var(--ag-shadow);display:flex;flex-direction:column;gap:6px}
+.vd-banner h2{margin:0;font-size:13px;letter-spacing:.08em;text-transform:uppercase;font-weight:600;opacity:.9}
+.vd-banner .vd-n{font-size:clamp(30px,4vw,44px);font-weight:700;letter-spacing:-.02em;font-variant-numeric:tabular-nums}
+.vd-banner p{margin:0;font-size:14px;opacity:.9}
+.vd-how{flex:1 1 18rem;background:var(--ag-panel);border:1px solid var(--ag-line);border-radius:var(--ag-r);padding:16px 20px;font-size:13.5px;line-height:1.6;color:var(--ag-muted);box-shadow:var(--ag-shadow)}
+.vd-how b{color:var(--ag-fg)}
+.vd-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,17rem),1fr));gap:14px}
+.vd-grid.solo{grid-template-columns:minmax(0,34rem)}
+.vd-card{background:var(--ag-panel);border:1px solid var(--ag-line);border-radius:var(--ag-r);padding:18px;display:flex;flex-direction:column;gap:12px;box-shadow:var(--ag-shadow);cursor:pointer;transition:transform .18s,box-shadow .18s}
+.vd-card:hover{transform:translateY(-2px)}
+.vd-top{display:flex;justify-content:space-between;align-items:baseline;gap:8px}
+.vd-loja{font-size:17px;font-weight:700}
+.vd-nome{font-size:12px;color:var(--ag-muted)}
+.vd-lbl{font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--ag-muted);font-weight:600}
+.vd-hoje{font-size:30px;font-weight:700;color:var(--ag-teal);letter-spacing:-.02em;font-variant-numeric:tabular-nums;line-height:1.1}
+.vd-grid.solo .vd-hoje{font-size:44px}
+.vd-bar{height:12px;border-radius:999px;background:var(--ag-panel-2);overflow:hidden;border:1px solid var(--ag-line)}
+.vd-bar i{display:block;height:100%;border-radius:999px;background:linear-gradient(90deg,var(--ag-sage),var(--ag-teal));transition:width .6s ease}
+.vd-bar i.done{background:linear-gradient(90deg,var(--ag-teal),var(--ag-ok))}
+.vd-row{display:flex;justify-content:space-between;gap:8px;font-size:13.5px;font-variant-numeric:tabular-nums}
+.vd-row span:first-child{color:var(--ag-muted)}
+.vd-row b{font-weight:600}
+.vd-chip{display:inline-flex;align-items:center;gap:6px;font-size:12.5px;padding:4px 10px;border-radius:999px;font-weight:600;align-self:flex-start}
+.vd-chip.ok{background:color-mix(in srgb,var(--ag-ok) 16%,transparent);color:var(--ag-ok)}
+.vd-chip.no{background:color-mix(in srgb,var(--ag-rose) 24%,transparent);color:#B04B55}
+.ag.dark .vd-chip.no{color:var(--ag-rose)}
+@media (prefers-reduced-motion:no-preference){.ag-sec:not([hidden]){animation:agIn .35s ease-out}@keyframes agIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}}
+[data-dash-source-state=refreshing]{opacity:.5;transition:opacity var(--cds-dur-slow)}
+[data-dash-source-state=empty]{color:transparent}
+</style>
+
+<div class="ag">
+  <header class="ag-hero" id="topo">
+    <div class="ag-hero-top">
+      <div class="ag-logo"><svg viewBox="0 0 230 48" height="44" role="img" aria-label="Grupo Horizonte (empresa fictícia)"><circle cx="24" cy="30" r="13" fill="#E1939A"/><rect x="4" y="30" width="40" height="18" fill="#2C3846"/><path d="M4 31h40M8 36h32M13 41h22" stroke="#fff" stroke-width="2.4" stroke-linecap="round"/><text x="56" y="22" fill="#fff" font-family="Inter,system-ui,sans-serif" font-size="11" letter-spacing="2.5" opacity=".8">GRUPO</text><text x="55" y="42" fill="#fff" font-family="Inter,system-ui,sans-serif" font-size="21" font-weight="700">Horizonte</text></svg></div>
+      <div class="ag-hero-tools">
+        <button type="button" class="ag-iconbtn" data-theme-toggle aria-pressed="false" aria-label="Alternar tema claro/escuro">
+          <svg class="ico-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>
+          <svg class="ico-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>
+          <span class="ico-moon">Tema escuro</span><span class="ico-sun">Tema claro</span>
+        </button>
+      </div>
+    </div>
+    <div>
+      <h1>Metas de vendas 2026 · Rede Aurora Cosméticos</h1>
+      <p class="ag-demo">Demonstração de portfólio com dados fictícios · data simulada: 18/11/2026</p>
+      <p class="ag-take"><span data-draw="take" data-source="base">—</span></p>
+      <p class="ag-upd" data-draw="upd">Carregando dados…</p>
+    </div>
+    <div class="ag-filters">
+      <label>Mês<select data-draw="f-mes" aria-label="Mês" data-source="base"></select></label>
+      <label>Loja<select data-draw="f-loja" aria-label="Loja" data-source="base"></select></label>
+      <label>Meta de referência<span class="ag-seg" role="group" aria-label="Meta de referência"><button type="button" data-ref="Interna" aria-pressed="true">Interna (grupo)</button><button type="button" data-ref="Rede" aria-pressed="false">Rede (franqueadora)</button></span></label>
+      <button type="button" class="ag-clear" data-clear disabled><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>Limpar filtros</button>
+    </div>
+  </header>
+
+  <nav class="ag-tabs" role="tablist">
+    <button type="button" role="tab" data-tab="diaria" class="vend" aria-selected="true">Meta diária</button>
+    <button type="button" role="tab" data-tab="vendedoras" aria-selected="false">Metas da equipe</button>
+    <button type="button" role="tab" data-tab="geral" aria-selected="false">Visão geral</button>
+    <button type="button" role="tab" data-tab="metas" aria-selected="false">Metas: mês, semana e dia</button>
+    <button type="button" role="tab" data-tab="vendas" aria-selected="false">Vendas 2025 × 2026</button>
+    <button type="button" role="tab" data-tab="medias" aria-selected="false">Médias</button>
+    <button type="button" role="tab" data-tab="previsao" aria-selected="false">Previsão</button>
+    <button type="button" role="tab" data-tab="insights" aria-selected="false">Insights</button>
+  </nav>
+
+  <!-- ============ VENDEDORAS ============ -->
+  <!-- ============ META DIÁRIA ============ -->
+  <section class="ag-sec" id="diaria" data-page="diaria">
+    <div class="dd">
+      <div class="dd-head">
+        <div>
+          <h2 class="dd-hi">Meta de hoje</h2>
+          <p class="dd-date" data-draw="dd-date" data-source="diaria">—</p>
+        </div>
+      </div>
+      <div class="dd-chips" role="group" aria-label="Escolha a loja" data-draw="dd-chips" data-source="diaria"></div>
+      <div data-draw="dd-body" data-source="diaria"></div>
+      <p class="dd-foot">Desafio = meta do dia definida pela gestora. Os valores vêm da planilha e são atualizados ao longo do dia.</p>
+    </div>
+  </section>
+
+  <section class="ag-sec" id="vendedoras" data-page="vendedoras" hidden>
+    <div class="vd-head">
+      <div class="vd-banner">
+        <h2>Meta interna de hoje · <span data-draw="vd-titulo" data-source="ritmo">—</span></h2>
+        <div class="vd-n" data-draw="vd-total" data-source="ritmo">—</div>
+        <p data-draw="vd-total-sub" data-source="ritmo">—</p>
+      </div>
+      <div class="vd-how"><b>Como usar:</b> cada cartão mostra quanto a loja precisa vender <b>hoje</b> para fechar a meta interna do mês. O valor muda todo dia: se ontem ficou abaixo, a meta de hoje sobe; se ficou acima, ela cai. Escolha sua loja no filtro “Loja” para ver só o seu cartão.</div>
+    </div>
+    <div class="vd-grid" data-draw="vd-cards" data-source="ritmo semanas anual"></div>
+    <p class="ag-note" data-empty="vend" hidden>O mês selecionado já terminou. Escolha o mês atual para ver a meta de hoje.</p>
+  </section>
+
+  <!-- ============ VISÃO GERAL ============ -->
+  <section class="ag-sec" id="geral" data-page="geral" hidden>
+    <div class="ag-card wide" id="card-ano">
+      <h2>Resultado do ano 2026 · meta anual</h2>
+      <p class="ag-note">Meta anual = soma das metas mensais de janeiro a dezembro. Realizado = vendas acumuladas de 2026 até hoje (inclui o mês em andamento). O valor por dia considera os dias de loja aberta até 31/12. Loja: filtro do topo.</p>
+      <div class="yr-wrap" data-draw="ano" data-source="anual"></div>
+      <p class="ag-insight"><span class="tag ev">Evidência</span><span data-draw="note-ano" data-source="anual">—</span></p>
+    </div>
+    <div class="ag-kpis">
+      <div class="ag-kpi" style="--k:var(--ag-blue)"><h3>Realizado no mês</h3><div class="ag-big" data-draw="k-real" data-source="base" data-field="real">—</div><div class="ag-sub" data-draw="k-real-sub" data-source="base">—</div></div>
+      <div class="ag-kpi" style="--k:var(--ag-teal)"><h3>Meta do mês</h3><div class="ag-big" data-draw="k-meta" data-source="base">—</div><div class="ag-sub" data-draw="k-meta-sub" data-source="base">—</div></div>
+      <div class="ag-kpi" style="--k:var(--ag-sage)"><h3>% da meta atingido</h3><div class="ag-big" data-draw="k-pct" data-source="base">—</div><div class="ag-sub" data-draw="k-pct-sub" data-source="base">—</div></div>
+      <div class="ag-kpi" style="--k:var(--ag-rose)"><h3>Falta para a meta</h3><div class="ag-big" data-draw="k-falta" data-source="ritmo">—</div><div class="ag-sub" data-draw="k-falta-sub" data-source="ritmo">—</div></div>
+      <div class="ag-kpi" style="--k:var(--ag-navy)"><h3>Venda necessária por dia</h3><div class="ag-big" data-draw="k-dia" data-source="ritmo">—</div><div class="ag-sub" data-draw="k-dia-sub" data-source="ritmo">—</div></div>
+      <div class="ag-kpi" style="--k:var(--ag-teal)"><h3>Acumulado 2026 × meta</h3><div class="ag-big" data-draw="k-ytd" data-source="acumulado">—</div><div class="ag-sub" data-draw="k-ytd-sub" data-source="acumulado">—</div></div>
+    </div>
+
+    <div class="ag-grid">
+      <div class="ag-card" id="card-ranking">
+        <h2>Atingimento da meta por loja</h2>
+        <p class="ag-note">% da meta de referência no mês selecionado. Marcador rosa: % da outra meta (interna ou da rede).</p>
+        <div class="ag-chart" data-draw="rank" data-source="base"></div>
+        <p class="ag-insight"><span class="tag ev">Evidência</span><span data-draw="note-rank" data-source="base">—</span></p>
+      </div>
+      <div class="ag-card" id="card-tendencia">
+        <h2>Venda mensal × meta × ano anterior</h2>
+        <p class="ag-note">Financeiro por mês para a loja selecionada.</p>
+        <div class="ag-legend"><span><i style="background:var(--ag-blue)"></i>Realizado 2026</span><span><i class="line" style="background:var(--ag-teal);height:3px"></i>Meta de referência</span><span><i class="line" style="background:var(--cds-chart-muted)"></i>Realizado 2025</span></div>
+        <div class="ag-chart" data-draw="trend" data-source="base"></div>
+        <p class="ag-insight"><span class="tag ev">Evidência</span><span data-draw="note-trend" data-source="acumulado">—</span></p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ METAS ============ -->
+  <section class="ag-sec" id="metas" data-page="metas" hidden>
+    <div class="ag-card wide" id="card-ano-lojas">
+      <h2>Meta anual por loja · acumulado de 2026</h2>
+      <p class="ag-note">Meta do ano (soma de jan a dez) interna do grupo e da rede (franqueadora), quanto cada loja já vendeu em 2026, quanto falta e a venda média por dia necessária até 31/12.</p>
+      <div class="ag-tbl-wrap">
+        <table data-source="anual" data-row-key="loja">
+          <thead><tr>
+            <th data-field="loja">Loja</th><th data-field="metaInterna">Meta anual Interna</th><th data-field="real">Realizado 2026</th><th data-field="atInterna">% Interna</th><th data-field="faltaInterna">Falta Interna</th><th data-field="metaRede">Meta anual Rede</th><th data-field="atRede">% rede</th><th data-field="faltaRede">Falta rede</th><th data-field="diasRest">Dias até 31/12</th><th data-field="porDiaInterna">Por dia (interna)</th><th data-field="porDiaRede">Por dia (da rede)</th>
+          </tr></thead>
+          <tbody data-draw="ano-tbody"></tbody>
+        </table>
+      </div>
+      <p class="ag-insight"><span class="tag ev">Evidência</span><span data-draw="note-ano-lojas" data-source="anual">—</span></p>
+    </div>
+    <div class="ag-card wide" id="card-metas-tabela">
+      <h2>Painel de metas do mês por loja</h2>
+      <p class="ag-note">Meta interna do grupo e meta da rede (franqueadora), o que falta e a venda média diária necessária nos dias de loja aberta que restam (seg–sáb; lojas de rua — RCE, RFL, AVB — fecham em feriados de dia útil). O valor por dia é dinâmico: recalcula conforme o realizado.</p>
+      <div class="ag-tbl-wrap">
+        <table data-source="ritmo" data-row-key="mes,loja">
+          <thead><tr>
+            <th data-field="loja">Loja</th><th data-field="metaInterna">Meta interna</th><th data-field="real">Realizado</th><th data-field="atInterna">% Interna</th><th data-field="faltaInterna">Falta Interna</th><th data-field="metaRede">Meta da rede</th><th data-field="atRede">% rede</th><th data-field="faltaRede">Falta rede</th><th data-field="diasRest">Dias rest.</th><th data-field="porDiaInterna">Por dia (interna)</th><th data-field="porDiaRede">Por dia (da rede)</th>
+          </tr></thead>
+          <tbody data-draw="metas-tbody"></tbody>
+        </table>
+      </div>
+      <p class="ag-insight"><span class="tag ev">Evidência</span><span data-draw="note-metas" data-source="ritmo">—</span></p>
+    </div>
+
+    <div class="ag-grid">
+      <div class="ag-card" id="card-semanas">
+        <h2>Metas semanais até o fim do mês</h2>
+        <p class="ag-note">Distribuição do que falta da meta de referência pelas semanas restantes (seg–sáb), proporcional aos dias de loja aberta. Cálculo derivado; a planilha não traz metas semanais. As datas de campanha (Natal, Black Friday) aparecem no cabeçalho da semana, mas a divisão continua linear: sem histórico diário, o painel não sabe quanto a mais essas semanas vendem.</p>
+        <div class="ag-tbl-wrap" data-draw="semanas" data-source="semanas"></div>
+        <p class="ag-note" data-empty="semanas" hidden>O mês selecionado não tem dias restantes: escolha o mês corrente para ver as metas semanais.</p>
+      </div>
+      <div class="ag-card" id="card-dia">
+        <h2>Último dia registrado: meta dia × realizado</h2>
+        <p class="ag-note">Bloco “Meta dia” da planilha (ele é sobrescrito a cada dia; a planilha não informa a data).</p>
+        <div class="ag-legend"><span><i style="background:color-mix(in srgb,var(--ag-teal) 25%,transparent);border:1px solid var(--ag-teal)"></i>Meta dia</span><span><i style="background:var(--ag-blue)"></i>Realizado</span></div>
+        <div class="ag-chart" data-draw="dia" data-source="base"></div>
+        <p class="ag-note" data-empty="dia" hidden>Sem registro diário para o mês selecionado.</p>
+        <p class="ag-insight"><span class="tag ev">Evidência</span><span data-draw="note-dia" data-source="ritmo">—</span></p>
+      </div>
+    </div>
+
+    <div class="ag-card wide" id="card-heatmap">
+      <h2>Histórico de atingimento — loja × mês</h2>
+      <p class="ag-note">% da meta de referência em cada mês de 2026. Verde ≥ 100%, âmbar 95–99%, vermelho &lt; 95%.</p>
+      <div data-draw="heat" data-source="base"></div>
+      <p class="ag-insight"><span class="tag ev">Evidência</span><span data-draw="note-heat" data-source="base">—</span></p>
+    </div>
+  </section>
+
+  <!-- ============ VENDAS ============ -->
+  <section class="ag-sec" id="vendas" data-page="vendas" hidden>
+    <div class="ag-grid">
+      <div class="ag-card" id="card-yoy">
+        <h2>Crescimento sobre 2025 por loja</h2>
+        <p class="ag-note">Variação do financeiro, do físico (peças) e dos boletos (compras). Mês selecionado; quando o mês ainda não tem base 2025, usa o acumulado jan–out.</p>
+        <div class="ag-legend"><span><i style="background:var(--ag-blue)"></i>Financeiro</span><span><i style="background:var(--ag-sage)"></i>Físico</span><span><i style="background:var(--ag-rose)"></i>Boletos</span></div>
+        <div class="ag-chart" data-draw="yoy" data-source="base acumulado"></div>
+        <p class="ag-insight"><span class="tag ev">Evidência</span><span data-draw="note-yoy" data-source="acumulado">—</span></p>
+      </div>
+      <div class="ag-card" id="card-share">
+        <h2>Participação no faturamento acumulado</h2>
+        <p class="ag-note">Peso de cada loja no realizado de 2026 até o mês selecionado.</p>
+        <div class="ag-chart" data-draw="share" data-source="acumulado"></div>
+        <p class="ag-insight"><span class="tag ev">Evidência</span><span data-draw="note-share" data-source="acumulado">—</span></p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ MÉDIAS ============ -->
+  <section class="ag-sec" id="medias" data-page="medias" hidden>
+    <div class="ag-card wide" id="card-medias">
+      <h2>Como a venda média mudou de 2025 para 2026</h2>
+      <p class="ag-note"><b>Preço médio</b>: valor médio de cada peça vendida. <b>Boleto médio</b>: quanto cada cliente gasta por compra. <b>Peças por boleto</b>: quantos produtos cada cliente leva. Período: <span data-draw="md-periodo" data-source="base acumulado">—</span>. Loja: filtro do topo.</p>
+      <div class="md-tiles" data-draw="md-tiles" data-source="base acumulado"></div>
+    </div>
+    <div class="ag-card wide" id="card-medias-lojas">
+      <h2>Variação por loja contra 2025</h2>
+      <p class="ag-note">Barras para a direita (verde) = a média subiu; para a esquerda (vermelho) = caiu. Clique numa loja para filtrar.</p>
+      <div class="ag-chart" data-draw="medias" data-source="base acumulado"></div>
+      <p class="ag-insight"><span class="tag ev">Evidência</span><span data-draw="note-medias" data-source="acumulado">—</span></p>
+    </div>
+  </section>
+
+  <!-- ============ PREVISÃO ============ -->
+  <section class="ag-sec" id="previsao" data-page="previsao" hidden>
+    <p class="ag-legenda-tags"><span class="tag ev">Realizado</span> dado lançado na planilha &nbsp; <span class="tag pr">Previsão</span> cálculo do painel &nbsp; <span class="tag hy">Recomendação</span> sugestão a validar com a gestão</p>
+    <div class="pv-big">
+      <div class="ag-card pv-q" style="--k:var(--ag-blue)">
+        <h3>1 · Quanto o grupo vai faturar em 2026?</h3>
+        <div class="ag-big" data-draw="pv-q1" data-source="previsao">—</div>
+        <div class="pv-faixa" data-draw="pv-q1-faixa" data-source="previsao">—</div>
+        <p class="pv-leit" data-draw="pv-q1-txt" data-source="previsao">—</p>
+      </div>
+      <div class="ag-card pv-q" style="--k:var(--ag-sage)">
+        <h3>2 · Quanto cresce sobre 2025?</h3>
+        <div class="ag-big" data-draw="pv-q2" data-source="previsao">—</div>
+        <div class="pv-faixa" data-draw="pv-q2-faixa" data-source="previsao">—</div>
+        <p class="pv-leit" data-draw="pv-q2-txt" data-source="previsao">—</p>
+      </div>
+      <div class="ag-card pv-q" style="--k:var(--ag-teal)">
+        <h3>3 · Qual meta interna para 2027?</h3>
+        <div class="ag-big" data-draw="pv-q3" data-source="previsao">—</div>
+        <div class="pv-faixa" data-draw="pv-q3-faixa" data-source="previsao">—</div>
+        <p class="pv-leit" data-draw="pv-q3-txt" data-source="previsao">—</p>
+      </div>
+    </div>
+
+    <div class="ag-grid">
+      <div class="ag-card">
+        <h2>Mês a mês: realizado, meta interna e previsão</h2>
+        <p class="ag-note">Barras azuis: realizado de 2026. Barras tracejadas: previsão provável; a faixa sombreada vai do pessimista ao otimista. Traço verde: meta interna do mês. Linha cinza: 2025.</p>
+        <div class="ag-legend"><span><i style="background:var(--ag-blue)"></i>Realizado 2026</span><span><i style="background:var(--ag-sage);opacity:.7"></i>Previsão provável e faixa</span><span><i class="line" style="background:var(--ag-teal);height:3px"></i>Meta interna</span><span><i class="line" style="background:var(--cds-chart-muted)"></i>2025</span></div>
+        <div class="ag-chart" data-draw="pv-chart" data-source="previsao"></div>
+        <p class="ag-insight"><span class="tag pr">Previsão</span><span data-draw="pv-chart-txt" data-source="previsao">—</span></p>
+      </div>
+      <div class="ag-card">
+        <h2>Como esta previsão é feita</h2>
+        <ul class="pv-list" data-draw="pv-premissas" data-source="previsao"></ul>
+      </div>
+    </div>
+
+    <div class="ag-card wide">
+      <h2>Previsão por loja</h2>
+      <p class="ag-note">Cada loja é prevista sozinha e a soma dá o total do grupo. A meta interna de 2027 é o total de cada opção distribuído pela participação planejada de cada loja.</p>
+      <div class="ag-tbl-wrap"><table><thead><tr><th>Loja</th><th>Realizado até hoje</th><th>Fecha 2026 (provável)</th><th>Faixa</th><th>% meta interna 2026</th><th>Sobre 2025</th><th>Peso 2027</th><th>Meta interna 2027 conservadora</th><th>Meta interna 2027 realista</th><th>Meta interna 2027 desafiadora</th></tr></thead><tbody data-draw="pv-lojas" data-source="previsao"></tbody></table></div>
+      <p class="ag-insight"><span class="tag pr">Previsão</span><span data-draw="pv-lojas-txt" data-source="previsao">—</span></p>
+    </div>
+
+    <div class="ag-grid">
+      <div class="ag-card">
+        <h2>Três cenários para fechar 2026</h2>
+        <div class="ag-tbl-wrap"><table><thead><tr><th>Cenário</th><th>O que define</th><th>Fecha 2026</th><th>Sobre 2025</th><th>% meta interna</th><th>% meta da rede</th></tr></thead><tbody data-draw="pv-tbody" data-source="previsao"></tbody></table></div>
+      </div>
+      <div class="ag-card">
+        <h2>Três opções de meta interna para 2027</h2>
+        <div class="ag-tbl-wrap"><table><thead><tr><th>Opção</th><th>Regra</th><th>Meta interna 2027</th><th>Sobre o fechamento de 2026</th></tr></thead><tbody data-draw="pv-opcoes" data-source="previsao"></tbody></table></div>
+        <p class="ag-insight"><span class="tag hy">Recomendação</span><span data-draw="pv-opcoes-txt" data-source="previsao">—</span></p>
+      </div>
+    </div>
+
+    <div class="ag-card wide" id="card-negociacao">
+      <h2>Premissa da franqueadora para 2027 × desempenho real das lojas</h2>
+      <p class="ag-note">A franqueadora projeta para as lojas físicas em 2027: preço +5%, boletos −2% e crescimento de 4%. A tabela compara essa premissa com o que aconteceu com os boletos de cada loja em 2026 (9 lojas com base em 2025). Serve para discutir a meta de 2027 com dados, loja a loja.</p>
+      <div class="ag-tbl-wrap"><table><thead><tr><th>Loja</th><th>Boletos 2026 × 2025 (ano)</th><th>Boletos (últimos 3 meses)</th><th>Premissa da rede</th><th>Distância da premissa</th><th>Boleto médio 2026 × 2025</th><th>Financeiro 2026 × 2025</th></tr></thead><tbody data-draw="pv-neg" data-source="previsao"></tbody></table></div>
+      <p class="ag-insight"><span class="tag ev">Realizado</span><span data-draw="pv-neg-txt" data-source="previsao">—</span></p>
+      <h2 style="margin-top:10px">De onde vem o crescimento de 4%, e o que muda para o grupo</h2>
+      <p class="ag-note">Crescimento = preço × boletos × outras alavancas (serviços, mix e lojas novas). As “outras alavancas” são o que sobra da conta da rede.</p>
+      <div class="ag-tbl-wrap"><table><thead><tr><th>Situação em 2027</th><th>Preço</th><th>Boletos</th><th>Outras alavancas</th><th>Crescimento resultante</th><th>Faturamento 2027</th><th>Diferença para a meta da rede</th></tr></thead><tbody data-draw="pv-dec" data-source="previsao"></tbody></table></div>
+      <p class="ag-insight"><span class="tag hy">Recomendação</span><span data-draw="pv-dec-txt" data-source="previsao">—</span></p>
+    </div>
+
+    <div class="ag-grid">
+      <div class="ag-card">
+        <h2>Teste do método nos meses já fechados</h2>
+        <p class="ag-note">O mesmo método foi usado para “prever” cada mês com o que se sabia até o mês anterior (lojas comparáveis). O erro médio define a largura dos cenários.</p>
+        <div class="ag-tbl-wrap"><table><thead><tr><th>Mês</th><th>Tendência usada</th><th>Previsto</th><th>Realizado</th><th>Erro</th></tr></thead><tbody data-draw="pv-bt" data-source="previsao"></tbody></table></div>
+        <p class="ag-insight"><span class="tag ev">Realizado</span><span data-draw="pv-bt-txt" data-source="previsao">—</span></p>
+      </div>
+      <div class="ag-card">
+        <h2>Regras do planejamento 2027 e calendário da reta final</h2>
+        <ul class="pv-list" data-draw="pv-regras" data-source="previsao"></ul>
+        <h2 style="margin-top:10px">O que ainda falta para uma previsão mais firme</h2>
+        <ul class="pv-list" data-draw="pv-faltas" data-source="previsao"></ul>
+      </div>
+    </div>
+
+    <ul class="ag-ins">
+      <li><h3><span class="tag hy">Recomendação</span>O ritmo recente é mais fraco que o do ano</h3><span data-draw="pv-h1" data-source="previsao">—</span></li>
+      <li><h3><span class="tag hy">Recomendação</span>O crescimento depende dos boletos</h3><span data-draw="pv-h3" data-source="previsao">—</span></li>
+      <li><h3><span class="tag ev">Realizado</span>Base de 2025</h3>A previsão usa o realizado mensal de 2025 de cada loja como base de sazonalidade. Lojas sem 2025 completo ficam fora das comparações anuais.</li>
+    </ul>
+  </section>
+
+  <!-- ============ INSIGHTS ============ -->
+  <section class="ag-sec" id="insights" data-page="insights" hidden>
+    <ul class="ag-ins">
+      <li><h3><span class="tag ev">Evidência</span>Ritmo para fechar o mês</h3>Faltam <b data-draw="i1-falta" data-source="ritmo">—</b> para a meta interna do mês. Nos <b data-draw="i1-dias" data-source="ritmo">—</b> dias de loja aberta restantes, o varejo precisa vender <b data-draw="i1-dia" data-source="ritmo">—</b> por dia. <span data-draw="i1-metadia" data-source="ritmo">—</span></li>
+      <li><h3><span class="tag ev">Evidência</span>Onde está o maior gap em valor</h3><span data-draw="i2" data-source="ritmo">—</span></li>
+      <li><h3><span class="tag ev">Evidência</span>Consistência no ano</h3><span data-draw="i3" data-source="base">—</span></li>
+      <li><h3><span class="tag ev">Evidência</span>Crescimento contra 2025 (lojas comparáveis, acumulado)</h3><span data-draw="i4" data-source="acumulado">—</span></li>
+      <li><h3><span class="tag ev">Evidência</span>De onde vem o crescimento</h3>No acumulado das lojas comparáveis, o boleto médio variou <b data-draw="i5-bm" data-source="acumulado">—</b> e a quantidade de boletos variou <b data-draw="i5-bol" data-source="acumulado">—</b> contra 2025. <span data-draw="i5-txt" data-source="acumulado">—</span></li>
+      <li><h3><span class="tag ev">Evidência</span>Qualidade dos dados</h3>A meta da rede da Mercado Avenida é <b data-draw="i6-zo" data-source="acumulado">—</b> do realizado no ano. Como a loja abriu em fevereiro de 2026, ela não tem base de 2025 e fica fora das comparações anuais. O painel recalcula todos os totais a partir dos meses, em vez de confiar em blocos de resumo da planilha.</li>
+      <li><h3><span class="tag hy">Hipótese / recomendação</span>Recalibrar a meta dia de novembro</h3>Se a meta dia definida para as lojas ficar abaixo do ritmo necessário (item 1), bater todos os dias ainda não fecha o mês. Recomendação: usar o “Por dia (interna)” do painel de metas como meta diária mínima e revisá-la a cada fechamento de dia.</li>
+      <li><h3><span class="tag hy">Hipótese / recomendação</span>Pesar a semana da Black Friday</h3>A Black Friday de 2026 é em 27/11. A planilha não traz dados de semanas anteriores para medir o efeito, então a divisão semanal do painel é linear. Hipótese: concentrar parte maior da meta na semana de 23 a 28/11 e reforçar escala e estoque nela; vale validar com o histórico diário de 2025, que não está nesta base.</li>
+      <li><h3><span class="tag hy">Hipótese / recomendação</span>Menos clientes, não clientes gastando menos</h3>Lojas com queda forte de boletos contra 2025 e boleto médio em alta (acumulado): <b data-draw="i7" data-source="acumulado">—</b>. Hipótese: perda de fluxo de clientes — no caso das lojas de rua, possivelmente também por canibalização das lojas novas/de supermercado da própria rede (a Mercado Avenida abriu em 2026). Recomendação: ações de captação de fluxo (CRM, vitrine, eventos) nessas lojas, e não só de ticket.</li>
+      <li><h3><span class="tag hy">Hipótese / recomendação</span>Replicar o que funciona em produtividade</h3><span data-draw="i8" data-source="acumulado">—</span> Recomendação: levar as práticas de venda casada/kit dessas lojas para as que estão abaixo da meta.</li>
+    </ul>
+    <div class="ag-foot">
+      <b>Como ler este painel</b>
+      <ul>
+        <li><span class="tag ev">Evidência</span> = número tirado ou calculado diretamente da planilha. <span class="tag hy">Hipótese</span> = interpretação ou sugestão que precisa ser validada pela gestão.</li>
+        <li>Dias restantes: contados de hoje até o fim do mês, segunda a sábado; feriados de dia útil (02/11, 20/11, 25/12) fecham só as lojas de rua (RCE, RFL, AVB).</li>
+        <li>Os dados desta demonstração são fictícios, gerados pelo script <code>scripts/gerar_dados.py</code> no mesmo formato da planilha que alimenta a versão em uso. A data de “hoje” está fixada em 18/11/2026.</li>
+      </ul>
+    </div>
+  </section>
+</div>
+
+<!-- ======================= DADOS ======================= -->
+<script>
+dash.calc('base', {
+  inputs: ['planilha'],
+  title: 'Mês × loja, com totais',
+  description: 'Realizado 2026 (financeiro; usa o "real" do bloco de metas quando a linha de vendas está vazia), % das metas interna e da rede, variação sobre 2025 e médias PM/BM/PD, mais uma linha "Total" por mês; meses futuros ficam de fora e "fechado" marca os meses já encerrados.',
+  fn: (planilha) => {
+    const NUM = ['fis25','fin25','bol25','fis26','fin26','bol26','metaInterna','metaRede','diaMeta','diaReal'];
+    const div = (a, b) => (a != null && b) ? a / b : null;
+    const out = [];
+    const months = [...new Set(planilha.map((r) => r.mes))];
+    const hojeISO = new Date(AG_HOJE).toISOString().slice(0, 10);
+    const ini = (m) => '2026-' + String(m).padStart(2, '0') + '-01';
+    const fim = (m) => new Date(Date.UTC(2026, m, 0)).toISOString().slice(0, 10);
+    months.forEach((mes) => {
+      if (ini(mes) > hojeISO) return; // mês futuro: ainda sem vendas
+      const fechado = fim(mes) < hojeISO;
+      const rs = planilha.filter((r) => r.mes === mes).map((r) => {
+        const real = r.fin26 != null ? r.fin26 : r.realMeta;
+        return { ...r, real };
+      });
+      const any = rs.some((r) => r.real != null || r.metaInterna != null);
+      if (!any) return;
+      const tot = { mes, loja: 'Total' };
+      NUM.forEach((k) => { const v = rs.filter((r) => r[k] != null); tot[k] = v.length ? v.reduce((s, r) => s + r[k], 0) : null; });
+      tot.real = rs.filter((r) => r.real != null).reduce((s, r) => s + r.real, 0);
+      const comp = rs.filter((r) => r.fin25 != null && r.real != null);
+      tot.fin25comp = comp.reduce((s, r) => s + r.fin25, 0) || null;
+      tot.real26comp = comp.reduce((s, r) => s + r.real, 0) || null;
+      [...rs, tot].forEach((r) => {
+        const o = { mes, loja: r.loja, fechado };
+        NUM.forEach((k) => { o[k] = r[k] ?? null; });
+        o.real = r.real ?? null;
+        o.atInterna = div(o.real, o.metaInterna); o.atRede = div(o.real, o.metaRede);
+        o.faltaInterna = o.metaInterna != null && o.real != null ? o.metaInterna - o.real : null;
+        o.faltaRede = o.metaRede != null && o.real != null ? o.metaRede - o.real : null;
+        o.varFin = o.fin25 && o.fin26 != null && o.fis26 != null ? o.fin26 / o.fin25 - 1 : null;
+        o.varFinComp = r.loja === 'Total' ? (r.fin25comp && r.fis26 ? r.real26comp / r.fin25comp - 1 : null) : o.varFin;
+        o.varFis = o.fis25 && o.fis26 != null ? o.fis26 / o.fis25 - 1 : null;
+        o.varBol = o.bol25 && o.bol26 != null ? o.bol26 / o.bol25 - 1 : null;
+        o.pm25 = div(o.fin25, o.fis25); o.bm25 = div(o.fin25, o.bol25); o.pd25 = div(o.fis25, o.bol25);
+        o.pm26 = div(o.fin26, o.fis26); o.bm26 = div(o.fin26, o.bol26); o.pd26 = div(o.fis26, o.bol26);
+        out.push(o);
+      });
+    });
+    return out;
+  },
+});
+
+dash.calc('acumulado', {
+  inputs: ['base'],
+  title: 'Acumulado do ano até cada mês',
+  description: 'Soma de janeiro até cada mês: realizado, metas interna/da rede, peças e boletos; variação sobre 2025 só com meses e lojas que têm base 2025 (comparáveis).',
+  fn: (base) => {
+    const lojas = [...new Set(base.map((r) => r.loja))];
+    const months = [...new Set(base.map((r) => r.mes))].sort((a, b) => a - b);
+    const out = [];
+    lojas.forEach((loja) => months.forEach((ate) => {
+      const rs = base.filter((r) => r.loja === loja && r.mes <= ate);
+      const sum = (k, f) => rs.filter(f || ((r) => r[k] != null)).reduce((s, r) => s + (r[k] || 0), 0);
+      const fechados = rs.filter((r) => r.fechado);
+      const comp = rs.filter((r) => r.fechado && r.fin25 != null && r.fis26 != null);
+      const o = { ate, loja,
+        real: sum('real'), metaInterna: sum('metaInterna'), metaRede: sum('metaRede'),
+        realFechado: fechados.reduce((s, r) => s + r.real, 0),
+        metaInternaFechado: fechados.reduce((s, r) => s + (r.metaInterna || 0), 0),
+        metaRedeFechado: fechados.reduce((s, r) => s + (r.metaRede || 0), 0),
+        fin25c: comp.reduce((s, r) => s + r.fin25, 0), fin26c: comp.reduce((s, r) => s + r.fin26, 0),
+        fis25c: comp.reduce((s, r) => s + r.fis25, 0), fis26c: comp.reduce((s, r) => s + r.fis26, 0),
+        bol25c: comp.reduce((s, r) => s + r.bol25, 0), bol26c: comp.reduce((s, r) => s + r.bol26, 0),
+        mesesComp: comp.length };
+      if (loja === 'Total') {
+        // comparáveis no total = lojas com base 2025 (sem MAV)
+        const st = base.filter((r) => r.loja !== 'Total' && r.mes <= ate && r.fechado && r.fin25 != null && r.fis26 != null);
+        o.fin25c = st.reduce((s, r) => s + r.fin25, 0); o.fin26c = st.reduce((s, r) => s + r.fin26, 0);
+        o.fis25c = st.reduce((s, r) => s + r.fis25, 0); o.fis26c = st.reduce((s, r) => s + r.fis26, 0);
+        o.bol25c = st.reduce((s, r) => s + r.bol25, 0); o.bol26c = st.reduce((s, r) => s + r.bol26, 0);
+      }
+      o.atInterna = o.metaInternaFechado ? o.realFechado / o.metaInternaFechado : null;
+      o.atRede = o.metaRedeFechado ? o.realFechado / o.metaRedeFechado : null;
+      o.varFin = o.fin25c ? o.fin26c / o.fin25c - 1 : null;
+      o.varFis = o.fis25c ? o.fis26c / o.fis25c - 1 : null;
+      o.varBol = o.bol25c ? o.bol26c / o.bol25c - 1 : null;
+      o.pm25 = o.fis25c ? o.fin25c / o.fis25c : null; o.pm26 = o.fis26c ? o.fin26c / o.fis26c : null;
+      o.bm25 = o.bol25c ? o.fin25c / o.bol25c : null; o.bm26 = o.bol26c ? o.fin26c / o.bol26c : null;
+      o.pd25 = o.bol25c ? o.fis25c / o.bol25c : null; o.pd26 = o.bol26c ? o.fis26c / o.bol26c : null;
+      o.varBM = o.bm25 && o.bm26 ? o.bm26 / o.bm25 - 1 : null;
+      out.push(o);
+    }));
+    return out;
+  },
+});
+
+dash.calc('diaria', {
+  inputs: ['planilha'],
+  title: 'Meta diária do mês atual',
+  description: 'Por loja, no mês atual: desafio do dia (meta dia da gestora e realizado), e a venda por dia que a planilha calcula para fechar as metas interna e da rede (venda por dia), com o realizado e o que falta no mês.',
+  fn: (planilha) => {
+    const hojeISO = new Date(AG_HOJE).toISOString().slice(0, 10);
+    let mes = +hojeISO.slice(5, 7);
+    const tem = (m) => planilha.some((r) => r.mes === m && r.metaInterna != null);
+    if (!tem(mes)) { const ms = [...new Set(planilha.filter((r) => r.metaInterna != null).map((r) => r.mes))]; mes = Math.max(...ms); }
+    const need = (v) => v == null ? null : v < 0 ? -v : 0;
+    const out = planilha.filter((r) => r.mes === mes).map((r) => {
+      const real = r.realMeta != null ? r.realMeta : (r.fin26 || 0);
+      const realRede = r.realRede != null ? r.realRede : real;
+      return { mes, loja: r.loja,
+        desafio: r.diaMeta, desafioReal: r.diaReal || 0,
+        desafioFalta: r.diaMeta != null ? Math.max(r.diaMeta - (r.diaReal || 0), 0) : null,
+        desafioPct: r.diaMeta ? (r.diaReal || 0) / r.diaMeta : null,
+        diaInterna: need(r.finDiaInterna), diaRede: need(r.finDiaRede),
+        metaInterna: r.metaInterna, realInterna: real, faltaInterna: r.metaInterna != null ? r.metaInterna - real : null, atInterna: r.metaInterna ? real / r.metaInterna : null,
+        metaRede: r.metaRede, realRede, faltaRede: r.metaRede != null ? r.metaRede - realRede : null, atRede: r.metaRede ? realRede / r.metaRede : null,
+        diasRest: r.diasRestPlan, diasMes: r.diasMesPlan };
+    });
+    const sum = (k) => { const v = out.filter((r) => r[k] != null); return v.length ? v.reduce((s, r) => s + r[k], 0) : null; };
+    const t = { mes, loja: 'Total' };
+    ['desafio','desafioReal','desafioFalta','diaInterna','diaRede','metaInterna','realInterna','faltaInterna','metaRede','realRede','faltaRede'].forEach((k) => { t[k] = sum(k); });
+    t.desafioPct = t.desafio ? t.desafioReal / t.desafio : null;
+    t.atInterna = t.metaInterna ? t.realInterna / t.metaInterna : null; t.atRede = t.metaRede ? t.realRede / t.metaRede : null;
+    t.diasRest = out.length ? out[0].diasRest : null; t.diasMes = out.length ? out[0].diasMes : null;
+    return [...out, t];
+  },
+});
+
+dash.calc('anual', {
+  inputs: ['planilha', 'base'],
+  title: 'Meta anual e acumulado do ano',
+  description: 'Meta do ano = soma das metas mensais (jan–dez) de cada loja, interna e da rede; realizado = vendas de 2026 até hoje; esperado até hoje = metas dos meses encerrados + parte da meta do mês atual proporcional aos dias de loja já decorridos; falta e venda por dia necessária até 31/12 (seg–sáb; feriados de dia útil fecham só RCE, RFL e AVB).',
+  fn: (planilha, base) => {
+    const FERIADOS = ['2026-11-02','2026-11-20','2026-12-25'];
+    const RUA = ['RCE','RFL','AVB'];
+    const hojeISO = new Date(AG_HOJE).toISOString().slice(0, 10);
+    const diasAteFim = (loja) => {
+      let n = 0; const d = new Date(hojeISO + 'T00:00:00Z');
+      while (d.toISOString().slice(0, 10) <= '2026-12-31') {
+        const iso = d.toISOString().slice(0, 10);
+        if (d.getUTCDay() !== 0 && !(RUA.includes(loja) && FERIADOS.includes(iso))) n++;
+        d.setUTCDate(d.getUTCDate() + 1);
+      }
+      return n;
+    };
+    const mesAtual = +hojeISO.slice(5, 7);
+    // fração do mês atual já decorrida, em dias de loja aberta (antes de hoje)
+    const fracMes = (loja) => {
+      let tot = 0, ant = 0; const fim = new Date(Date.UTC(2026, mesAtual, 0)).getUTCDate();
+      for (let d = 1; d <= fim; d++) {
+        const dt = new Date(Date.UTC(2026, mesAtual - 1, d)); const iso = dt.toISOString().slice(0, 10);
+        if (dt.getUTCDay() === 0 || (RUA.includes(loja) && FERIADOS.includes(iso))) continue;
+        tot++; if (iso < hojeISO) ant++;
+      }
+      return tot ? ant / tot : 0;
+    };
+    const lojas = [...new Set(planilha.map((r) => r.loja))];
+    const out = lojas.map((loja) => {
+      const pm = planilha.filter((r) => r.loja === loja);
+      const fr = fracMes(loja);
+      const esp = (k) => pm.reduce((s, r) => s + (r.mes < mesAtual ? (r[k] || 0) : r.mes === mesAtual ? (r[k] || 0) * fr : 0), 0);
+      const metaInterna = pm.reduce((s, r) => s + (r.metaInterna || 0), 0);
+      const metaRede = pm.reduce((s, r) => s + (r.metaRede || 0), 0);
+      const real = base.filter((r) => r.loja === loja).reduce((s, r) => s + (r.real || 0), 0);
+      const diasRest = diasAteFim(loja);
+      const faltaInterna = metaInterna - real, faltaRede = metaRede - real;
+      return { loja, metaInterna, metaRede, real,
+        mesesInterna: pm.filter((r) => r.metaInterna).length, mesesRede: pm.filter((r) => r.metaRede).length,
+        atInterna: metaInterna ? real / metaInterna : null, atRede: metaRede ? real / metaRede : null,
+        faltaInterna, faltaRede, diasRest, espInterna: esp('metaInterna'), espRede: esp('metaRede'),
+        porDiaInterna: diasRest ? Math.max(faltaInterna, 0) / diasRest : null,
+        porDiaRede: diasRest ? Math.max(faltaRede, 0) / diasRest : null };
+    });
+    const sum = (k) => out.reduce((s, r) => s + (r[k] || 0), 0);
+    const t = { loja: 'Total', metaInterna: sum('metaInterna'), metaRede: sum('metaRede'), real: sum('real'), espInterna: sum('espInterna'), espRede: sum('espRede'),
+      mesesInterna: Math.max(...out.map((r) => r.mesesInterna)), mesesRede: Math.max(...out.map((r) => r.mesesRede)),
+      diasRest: Math.max(...out.map((r) => r.diasRest)), porDiaInterna: sum('porDiaInterna'), porDiaRede: sum('porDiaRede') };
+    t.faltaInterna = t.metaInterna - t.real; t.faltaRede = t.metaRede - t.real;
+    t.atInterna = t.metaInterna ? t.real / t.metaInterna : null; t.atRede = t.metaRede ? t.real / t.metaRede : null;
+    return [...out, t];
+  },
+});
+
+dash.calc('ritmo', {
+  inputs: ['base'],
+  title: 'Ritmo diário para a meta',
+  description: 'Dias de loja aberta restantes (de hoje ao fim do mês, seg–sáb; feriados de dia útil fecham só RCE, RFL e AVB) e a venda por dia que falta para as metas interna e da rede.',
+  fn: (base) => {
+    const FERIADOS = ['2026-01-01','2026-02-16','2026-02-17','2026-04-03','2026-04-21','2026-05-01','2026-06-04','2026-09-07','2026-10-12','2026-11-02','2026-11-20','2026-12-25'];
+    const RUA = ['RCE','RFL','AVB'];
+    const hoje = new Date(AG_HOJE); // America/Sao_Paulo
+    const hojeISO = hoje.toISOString().slice(0, 10);
+    const dias = (mes, loja, desde) => {
+      let n = 0; const fim = new Date(Date.UTC(2026, mes, 0)).getUTCDate();
+      for (let d = 1; d <= fim; d++) {
+        const dt = new Date(Date.UTC(2026, mes - 1, d)); const iso = dt.toISOString().slice(0, 10);
+        if (desde && iso < desde) continue;
+        if (dt.getUTCDay() === 0) continue;
+        if (RUA.includes(loja) && FERIADOS.includes(iso)) continue;
+        n++;
+      }
+      return n;
+    };
+    const out = [];
+    const months = [...new Set(base.map((r) => r.mes))];
+    months.forEach((mes) => {
+      const st = base.filter((r) => r.mes === mes && r.loja !== 'Total').map((r) => {
+        const diasMes = dias(mes, r.loja, null);
+        const diasRest = dias(mes, r.loja, hojeISO);
+        const fInterna = r.faltaInterna, fRede = r.faltaRede;
+        return { mes, loja: r.loja, metaInterna: r.metaInterna, metaRede: r.metaRede, real: r.real, atInterna: r.atInterna, atRede: r.atRede,
+          faltaInterna: fInterna, faltaRede: fRede, diasMes, diasRest,
+          porDiaInterna: diasRest && fInterna != null ? Math.max(fInterna, 0) / diasRest : null,
+          porDiaRede: diasRest && fRede != null ? Math.max(fRede, 0) / diasRest : null,
+          diaMeta: r.diaMeta, diaReal: r.diaReal };
+      });
+      const s = (k) => { const v = st.filter((r) => r[k] != null); return v.length ? v.reduce((a, r) => a + r[k], 0) : null; };
+      const t = { mes, loja: 'Total', metaInterna: s('metaInterna'), metaRede: s('metaRede'), real: s('real'), faltaInterna: s('faltaInterna'), faltaRede: s('faltaRede'),
+        diasMes: Math.max(...st.map((r) => r.diasMes)), diasRest: Math.max(...st.map((r) => r.diasRest)),
+        porDiaInterna: s('porDiaInterna'), porDiaRede: s('porDiaRede'), diaMeta: s('diaMeta'), diaReal: s('diaReal') };
+      t.atInterna = t.metaInterna ? t.real / t.metaInterna : null; t.atRede = t.metaRede ? t.real / t.metaRede : null;
+      out.push(...st, t);
+    });
+    return out;
+  },
+});
+
+dash.calc('semanas', {
+  inputs: ['ritmo'],
+  title: 'Metas semanais restantes',
+  description: 'O que falta da meta dividido pelas semanas restantes do mês (seg–sáb), proporcional aos dias de loja aberta de cada loja.',
+  fn: (ritmo) => {
+    const FERIADOS = ['2026-11-02','2026-11-20','2026-12-25'];
+    const RUA = ['RCE','RFL','AVB'];
+    const hojeISO = new Date(AG_HOJE).toISOString().slice(0, 10);
+    const out = [];
+    ritmo.filter((r) => r.diasRest > 0 && r.loja !== 'Total').forEach((r) => {
+      const fim = new Date(Date.UTC(2026, r.mes, 0)).getUTCDate();
+      const wk = new Map();
+      for (let d = 1; d <= fim; d++) {
+        const dt = new Date(Date.UTC(2026, r.mes - 1, d)); const iso = dt.toISOString().slice(0, 10);
+        if (iso < hojeISO || dt.getUTCDay() === 0) continue;
+        const seg = new Date(dt); seg.setUTCDate(d - ((dt.getUTCDay() + 6) % 7));
+        const key = seg.toISOString().slice(0, 10);
+        if (!wk.has(key)) wk.set(key, { ini: iso, fim: iso, dias: 0 });
+        const w = wk.get(key); w.fim = iso;
+        if (!(RUA.includes(r.loja) && FERIADOS.includes(iso))) w.dias++;
+      }
+      [...wk.values()].forEach((w, i) => out.push({ mes: r.mes, loja: r.loja, semana: i + 1, ini: w.ini, fim: w.fim, dias: w.dias,
+        metaInterna: r.porDiaInterna != null ? r.porDiaInterna * w.dias : null, metaRede: r.porDiaRede != null ? r.porDiaRede * w.dias : null }));
+    });
+    const keys = [...new Set(out.map((r) => r.mes + '|' + r.semana))];
+    keys.forEach((k) => {
+      const rs = out.filter((r) => r.mes + '|' + r.semana === k && r.loja !== 'Total');
+      out.push({ mes: rs[0].mes, loja: 'Total', semana: rs[0].semana, ini: rs[0].ini, fim: rs[0].fim, dias: Math.max(...rs.map((r) => r.dias)),
+        metaInterna: rs.reduce((s, r) => s + (r.metaInterna || 0), 0), metaRede: rs.reduce((s, r) => s + (r.metaRede || 0), 0) });
+    });
+    return out;
+  },
+});
+
+// ---- Previsão ----
+// Base 2025 por loja e mês: vem do dados.json (campo base2025).
+const BASE_2025 = {};
+// Premissas (fictícias) da franqueadora para as lojas físicas em 2027
+const CRESC_REDE_2027 = 0.04, REAJUSTE_PRECO = 0.05;
+const PREMISSA_BOLETOS_2027 = -0.02;
+// Datas da reta final de 2026
+const CAMPANHAS = [
+  { data: '2026-11-19', nome: 'Início da campanha de Natal' },
+  { data: '2026-11-27', nome: 'Black Friday' },
+  { data: '2026-12-10', nome: 'Reforço de Natal' },
+];
+window.AG_CAMPANHAS = CAMPANHAS;
+// participação planejada de cada loja em 2027; usada só se os dados não trouxerem os pesos
+const PESOS_2027_PADRAO = { 'RCE':0.052,'HNO':0.188,'RFL':0.106,'AVB':0.104,'MSU':0.071,'SPQ':0.112,'MPQ':0.083,'SLA':0.11,'SCO':0.094,'MAV':0.079 };
+
+dash.calc('previsao', {
+  inputs: ['planilha', 'pesos'],
+  title: 'Previsão de fechamento 2026 e metas 2027',
+  description: 'Por loja: o que falta do ano = mesmo período de 2025 (base de 2025) × tendência da loja nos últimos 3 meses fechados. Cenários = provável ± 2 × erro médio do teste do método (pessimista usa o ritmo do mês em andamento, se for pior). Metas internas 2027 em três opções, distribuídas pela participação planejada de cada loja.',
+  fn: (planilha, pesosIn) => {
+    const LOJAS = Object.keys(BASE_2025), COMP = LOJAS.filter((l) => l !== 'MAV');
+    const hojeISO = new Date(AG_HOJE).toISOString().slice(0, 10);
+    const mesAtual = +hojeISO.slice(5, 7);
+    const sum = (a) => a.reduce((s, v) => s + v, 0);
+    const row = (l, m) => planilha.find((x) => x.loja === l && x.mes === m);
+    const R = (l, m) => { const r = row(l, m); return r ? ((r.fin26 != null ? r.fin26 : r.realMeta) || 0) : 0; };
+    const F25 = (l, m) => { const r = row(l, m); return r ? (r.fin25 || 0) : 0; };
+    const P = (l, m) => BASE_2025[l][m - 1];
+    const fechados = []; for (let m = 1; m < mesAtual; m++) fechados.push(m);
+    const ult3 = fechados.slice(-3);
+    const yoyL = (l, ms) => { const b = sum(ms.map((m) => P(l, m))); return b ? sum(ms.map((m) => R(l, m))) / b - 1 : 0; };
+    const yoyT = (ms) => { const b = sum(COMP.map((l) => sum(ms.map((m) => P(l, m))))); return b ? sum(COMP.map((l) => sum(ms.map((m) => R(l, m))))) / b - 1 : 0; };
+
+    // teste do método: prever cada mês fechado com a tendência dos 3 meses anteriores de cada loja
+    const bt = [];
+    fechados.filter((m) => m >= 4).forEach((m) => {
+      const ant = [m - 3, m - 2, m - 1];
+      const prev = sum(COMP.map((l) => P(l, m) * (1 + yoyL(l, ant))));
+      const real = sum(COMP.map((l) => R(l, m)));
+      bt.push({ tipo: 'bt', mes: m, tend: yoyT(ant), prev, real, erro: real ? prev / real - 1 : null });
+    });
+    const erroMedio = bt.length ? sum(bt.map((b) => Math.abs(b.erro))) / bt.length : 0.05;
+    const vies = bt.length ? sum(bt.map((b) => b.erro)) / bt.length : 0;
+
+    // tendências
+    const gAno = yoyT(fechados), gRec = yoyT(ult3);
+    const aTd = sum(COMP.map((l) => R(l, mesAtual))), bTd = sum(COMP.map((l) => F25(l, mesAtual)));
+    const gTd = bTd > 0 && aTd > 0 ? aTd / bTd - 1 : null;
+    const larg = 2 * erroMedio;
+    const dPess = Math.min(-larg, gTd != null ? gTd - gRec : -larg);
+    const CEN = [
+      { id: 'pess', nome: 'Pessimista', d: dPess, base: gTd != null && gTd - gRec < -larg ? 'O ritmo fraco do mês em andamento continua até dezembro.' : 'Provável menos duas vezes o erro médio do teste.' },
+      { id: 'prov', nome: 'Provável', d: 0, base: 'Cada loja repete, sobre 2025, a tendência dos seus últimos 3 meses fechados.' },
+      { id: 'otim', nome: 'Otimista', d: larg, base: 'Provável mais duas vezes o erro médio do teste.' },
+    ];
+    // parte do mês atual já decorrida (pelo peso do mesmo período em 2025) e sazonalidade da rede
+    const parteTd = bTd > 0 ? bTd / sum(COMP.map((l) => P(l, mesAtual))) : null;
+    const mediaComp = sum(COMP.map((l) => sum(fechados.map((m) => P(l, m))))) / Math.max(fechados.length, 1);
+    const idx = (m) => sum(COMP.map((l) => P(l, m))) / mediaComp;
+    const zoMed = sum(fechados.map((m) => R('MAV', m))) / Math.max(fechados.length, 1);
+
+    const prevMes = (l, m, d) => {
+      if (l === 'MAV') {
+        if (m === mesAtual) { const r = R(l, m); return parteTd ? r + (r / parteTd - r) * (1 + d) : r; }
+        return zoMed * idx(m) * (1 + d);
+      }
+      const g = yoyL(l, ult3) + d;
+      if (m === mesAtual) return R(l, m) + Math.max(P(l, m) - F25(l, m), 0) * (1 + g);
+      return P(l, m) * (1 + g);
+    };
+    const pesosRaw = {}; LOJAS.forEach((l) => { pesosRaw[l] = (pesosIn && pesosIn[l]) || PESOS_2027_PADRAO[l] || 0; });
+    const pesoTot = sum(Object.values(pesosRaw)) || 1;
+    const metaInternaano = sum(planilha.map((r) => r.metaInterna || 0)), metaRedeano = sum(planilha.map((r) => r.metaRede || 0));
+    const razao = metaRedeano ? metaInternaano / metaRedeano : 1;
+
+    const out = [];
+    const lojas = LOJAS.map((l) => {
+      const ytd = sum(Array.from({ length: mesAtual }, (_, i) => R(l, i + 1)));
+      const fech = sum(fechados.map((m) => R(l, m)));
+      const o = { tipo: 'loja', loja: l, ytd, metaInterna: sum(planilha.filter((r) => r.loja === l).map((r) => r.metaInterna || 0)), real25: sum(BASE_2025[l]), comparavel: l !== 'MAV', tend: l === 'MAV' ? null : yoyL(l, ult3), peso: pesosRaw[l] / pesoTot };
+      CEN.forEach((c) => { let v = fech; for (let m = mesAtual; m <= 12; m++) v += prevMes(l, m, c.d); o[c.id] = v; });
+      o.atInterna = o.metaInterna ? o.prov / o.metaInterna : null;
+      o.cresc25 = o.comparavel && o.real25 ? o.prov / o.real25 - 1 : null;
+      return o;
+    });
+    const real25 = sum(LOJAS.map((l) => sum(BASE_2025[l]))), real25comp = sum(COMP.map((l) => sum(BASE_2025[l])));
+    const ytd = sum(lojas.map((l) => l.ytd));
+    const cen = CEN.map((c) => {
+      const fecha = sum(lojas.map((l) => l[c.id])), fechaComp = sum(lojas.filter((l) => l.comparavel).map((l) => l[c.id]));
+      return { tipo: 'cenario', id: c.id, nome: c.nome, base: c.base, g: gRec + c.d, fecha, cresc25: fecha / real25 - 1, crescComp: fechaComp / real25comp - 1,
+        atInterna: metaInternaano ? fecha / metaInternaano : null, atRede: metaRedeano ? fecha / metaRedeano : null, faltaInterna: metaInternaano - fecha };
+    });
+    const prov = cen.find((c) => c.id === 'prov');
+    // três opções de meta interna 2027, sobre o fechamento provável de 2026
+    const OPC = [
+      { id: 'cons', nome: 'Conservadora', fator: 1 + CRESC_REDE_2027, regra: 'Igual à meta da rede 2027: fechamento de 2026 + 4%, sem folga.' },
+      { id: 'real', nome: 'Realista', fator: (1 + CRESC_REDE_2027) * razao, regra: 'Rede 2027 com a mesma folga que a meta interna teve sobre a da rede em 2026.' },
+      { id: 'desa', nome: 'Desafiadora', fator: (1 + REAJUSTE_PRECO) * razao, regra: 'Mesmo volume de 2026 com o reajuste de preço de 5%, mais a folga de 2026.' },
+    ];
+    const opc = OPC.map((o) => ({ tipo: 'opcao', id: o.id, nome: o.nome, regra: o.regra, total: prov.fecha * o.fator, cresc: o.fator - 1 }));
+    lojas.forEach((l) => { opc.forEach((o) => { l['m27' + o.id] = o.total * l.peso; }); });
+    // boletos e boleto médio (planilha, 2026 × 2025) contra a premissa da rede
+    const B = (l, m, k) => { const r = row(l, m); return r ? (r[k] || 0) : 0; };
+    const neg = (ls, ms) => {
+      const b25 = sum(ls.map((l) => sum(ms.map((m) => B(l, m, 'bol25'))))), b26 = sum(ls.map((l) => sum(ms.map((m) => B(l, m, 'bol26')))));
+      const f25 = sum(ls.map((l) => sum(ms.map((m) => F25(l, m))))), f26 = sum(ls.map((l) => sum(ms.map((m) => B(l, m, 'fin26')))));
+      return { bol: b25 ? b26 / b25 - 1 : null, bm: b25 && b26 && f25 ? (f26 / b26) / (f25 / b25) - 1 : null, fin: f25 ? f26 / f25 - 1 : null, bol26: b26 };
+    };
+    const negs = COMP.map((l) => { const a = neg([l], fechados), r = neg([l], ult3); return { tipo: 'neg', loja: l, bol: a.bol, bm: a.bm, fin: a.fin, bolRec: r.bol, bol26: a.bol26 }; });
+    const nT = neg(COMP, fechados), nR = neg(COMP, ult3), nA = neg(COMP, [mesAtual]);
+    negs.push({ tipo: 'neg', loja: 'Total', bol: nT.bol, bm: nT.bm, fin: nT.fin, bolRec: nR.bol, bol26: nT.bol26, bolAtual: nA.bol });
+    const outros = (1 + CRESC_REDE_2027) / ((1 + REAJUSTE_PRECO) * (1 + PREMISSA_BOLETOS_2027)) - 1;
+    const dec = [
+      { tipo: 'dec', id: 'rede', nome: 'Premissa da rede', bol: PREMISSA_BOLETOS_2027 },
+      { tipo: 'dec', id: 'manter', nome: 'O grupo mantém os boletos de 2026', bol: 0 },
+      { tipo: 'dec', id: 'tend', nome: 'O grupo repete a queda de boletos de 2026', bol: nT.bol },
+    ].map((d) => ({ ...d, preco: REAJUSTE_PRECO, outros, cresc: (1 + REAJUSTE_PRECO) * (1 + d.bol) * (1 + outros) - 1 }));
+    dec.forEach((d) => { d.fat = prov.fecha * (1 + d.cresc); d.vsMeta = d.fat - prov.fecha * (1 + CRESC_REDE_2027); });
+    out.push(...cen, ...opc, ...lojas, ...bt, ...negs, ...dec);
+    for (let m = 1; m <= 12; m++) {
+      const o = { tipo: 'mes', mes: m, mesAtual: m === mesAtual, real: m <= mesAtual ? sum(LOJAS.map((l) => R(l, m))) : null,
+        p25: sum(LOJAS.map((l) => P(l, m))), metaInterna: sum(planilha.filter((r) => r.mes === m).map((r) => r.metaInterna || 0)) || null };
+      if (m >= mesAtual) CEN.forEach((c) => { o[c.id] = sum(LOJAS.map((l) => prevMes(l, m, c.d))); });
+      out.push(o);
+    }
+    out.push({ tipo: 'meta', mesAtual, ultFechado: fechados.length ? fechados[fechados.length - 1] : null, ytd, real25, real25comp, metaInternaano, metaRedeano, razao,
+      gAno, gRec, gTd, erroMedio, vies, larg, dPess, idxDez: idx(12), parteTd, crescRede: CRESC_REDE_2027, preco: REAJUSTE_PRECO,
+      volImplicito: (1 + CRESC_REDE_2027) / (1 + REAJUSTE_PRECO) - 1, pef27: prov.fecha * (1 + CRESC_REDE_2027), pesosDaPlanilha: !!(pesosIn && Object.keys(pesosIn).length), premBol: PREMISSA_BOLETOS_2027, outros });
+    return out;
+  },
+});
+</script>
+
+<!-- ======================= ESTADO / UTILITÁRIOS ======================= -->
+<script>
+window.AG = (() => {
+  const NOMES = { 'RCE':'Rua Central','HNO':'Hiper Norte','RFL':'Rua das Flores','AVB':'Avenida Brasil','MSU':'Mercado Sul','SPQ':'Shopping Parque','MPQ':'Mercado Parque','SLA':'Shopping Lagoa','SCO':'Shopping Colina','MAV':'Mercado Avenida','Total':'Total varejo' };
+  const MESES = ['','Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
+  const MES3 = ['','jan','fev','mar','abr','mai','jun','jul','ago','set','out','nov','dez'];
+  const brl0 = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 });
+  const brl2 = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const cmp = new Intl.NumberFormat('pt-BR', { notation: 'compact', maximumFractionDigits: 1 });
+  const pctF = new Intl.NumberFormat('pt-BR', { style: 'percent', maximumFractionDigits: 0 });
+  const pct1 = new Intl.NumberFormat('pt-BR', { style: 'percent', minimumFractionDigits: 1, maximumFractionDigits: 1 });
+  const n2 = new Intl.NumberFormat('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const f = {
+    brl: (v) => v == null ? '—' : brl0.format(v),
+    brl2: (v) => v == null ? '—' : brl2.format(v),
+    brlc: (v) => v == null ? '—' : 'R$ ' + cmp.format(v),
+    pct: (v) => v == null ? '—' : pctF.format(v),
+    pct1: (v) => v == null ? '—' : pct1.format(v),
+    var: (v) => v == null ? '—' : (v > 0 ? '+' : '') + pct1.format(v).replace(' ', ''),
+    n2: (v) => v == null ? '—' : n2.format(v),
+  };
+  const ok = (id) => dash.data(id).status === 'ok';
+  const rows = (id) => ok(id) ? dash.data(id).data : [];
+  const mesesComMeta = () => [...new Set(rows('base').filter((r) => r.loja === 'Total' && r.metaInterna != null).map((r) => r.mes))].sort((a, b) => a - b);
+  const mesAtual = () => {
+    const p = dash.params().mes; const ms = mesesComMeta();
+    if (p != null && ms.includes(+p)) return +p;
+    const hoje = new Date(AG_HOJE).getUTCMonth() + 1;
+    return ms.includes(hoje) ? hoje : ms[ms.length - 1];
+  };
+  const loja = () => dash.params().loja || 'Total';
+  const ref = () => dash.params().ref === 'Rede' ? 'Rede' : 'Interna';
+  const status = (p) => p == null ? '' : p >= 1 ? 'ok' : p >= 0.95 ? 'warn' : 'bad';
+  const cls = (v) => v == null ? '' : v >= 0 ? 'pos' : 'neg';
+  const mark = (el, where, field) => { if (where) el.setAttribute('data-where', where); else el.removeAttribute('data-where'); if (field) el.setAttribute('data-field', field); };
+  const enc = (s) => encodeURIComponent(s);
+  const tip = (host) => {
+    let t = host.querySelector(':scope > .ag-tip');
+    if (!t) { t = document.createElement('div'); t.className = 'ag-tip'; t.hidden = true; host.appendChild(t); }
+    return {
+      show(ev, lines) {
+        t.replaceChildren(); lines.forEach((l, i) => { const d = document.createElement('div'); if (i === 0) d.className = 't'; d.textContent = l; t.appendChild(d); });
+        t.hidden = false; const b = host.getBoundingClientRect();
+        let x = ev.clientX - b.left + 12, y = ev.clientY - b.top + 12;
+        if (x + t.offsetWidth > b.width) x = Math.max(0, ev.clientX - b.left - t.offsetWidth - 12);
+        t.style.left = x + 'px'; t.style.top = y + 'px';
+      },
+      hide() { t.hidden = true; },
+    };
+  };
+  const lojasOrd = ['RCE','HNO','RFL','AVB','MSU','SPQ','MPQ','SLA','SCO','MAV'];
+  return { NOMES, MESES, MES3, f, ok, rows, mesesComMeta, mesAtual, loja, ref, status, cls, mark, enc, tip, lojasOrd };
+})();
+</script>
+
+
+<!-- ======================= PREVISÃO ======================= -->
+<script>
+(() => {
+  const { f } = AG;
+  const P = () => AG.rows('previsao');
+  const tipo = (t) => P().filter((r) => r.tipo === t);
+  const meta = () => P().find((r) => r.tipo === 'meta');
+  const cen = (id) => tipo('cenario').find((r) => r.id === id);
+  const opc = (id) => tipo('opcao').find((r) => r.id === id);
+  const em = (v) => v == null ? '—' : 'R$ ' + (v / 1e6).toFixed(2).replace('.', ',') + ' mi';
+  const set = (name, fn) => dash.draw(name, (el) => { const p = cen('prov'), m = meta(); if (!p || !m) { el.textContent = '—'; return; } fn(el, p, m); });
+  const td = (tr, v, o) => { const c = document.createElement('td'); c.textContent = v; if (o && o.wrap) { c.style.whiteSpace = 'normal'; c.style.minWidth = '13rem'; c.style.textAlign = 'left'; } if (o && o.b) c.style.fontWeight = '700'; tr.appendChild(c); return c; };
+
+  set('pv-q1', (el, p) => { el.textContent = f.brl(p.fecha); });
+  set('pv-q1-faixa', (el) => { el.textContent = 'Entre ' + em(cen('pess').fecha) + ' (pessimista) e ' + em(cen('otim').fecha) + ' (otimista)'; });
+  set('pv-q1-txt', (el, p, m) => {
+    el.textContent = 'Isso é ' + f.pct(p.atInterna) + ' da meta interna do ano (' + f.brl(m.metaInternaano) + '). ' + (p.faltaInterna > 0 ? 'No cenário provável a meta não é batida: faltam ' + f.brl(p.faltaInterna) + '.' : 'No cenário provável a meta é batida, com ' + f.brl(-p.faltaInterna) + ' de sobra.') + (cen('otim').faltaInterna > 0 ? ' Nem o cenário otimista chega à meta.' : ' No otimista a meta é batida.');
+  });
+  set('pv-q2', (el, p) => { el.textContent = f.var(p.cresc25); });
+  set('pv-q2-faixa', (el) => { el.textContent = 'Entre ' + f.var(cen('pess').cresc25) + ' e ' + f.var(cen('otim').cresc25); });
+  set('pv-q2-txt', (el, p, m) => { el.textContent = 'Total das 10 lojas contra ' + em(m.real25) + ' em 2025. Nas 9 lojas comparáveis (sem a Mercado Avenida) a previsão é ' + f.var(p.crescComp) + ', entre ' + f.var(cen('pess').crescComp) + ' e ' + f.var(cen('otim').crescComp) + '. O crescimento do total vem da loja nova.'; });
+  set('pv-q3', (el) => { el.textContent = f.brl(opc('real').total); });
+  set('pv-q3-faixa', (el) => { el.textContent = 'Entre ' + em(opc('cons').total) + ' (conservadora) e ' + em(opc('desa').total) + ' (desafiadora)'; });
+  set('pv-q3-txt', (el, p, m) => { el.textContent = 'Opção realista: ' + f.var(opc('real').cresc) + ' sobre o fechamento previsto de 2026. A meta da rede 2027 estimada é ' + f.brl(m.pef27) + ' (regra da rede: realizado de 2026 + 4%).'; });
+
+  dash.draw('pv-tbody', (tb) => {
+    tb.replaceChildren();
+    tipo('cenario').forEach((c) => { const tr = document.createElement('tr'); const b = { b: c.id === 'prov' };
+      td(tr, c.nome, b); td(tr, c.base, { wrap: 1 }); td(tr, f.brl(c.fecha), b); td(tr, f.var(c.cresc25), b); td(tr, f.pct(c.atInterna), b); td(tr, f.pct(c.atRede), b); tb.appendChild(tr); });
+  });
+  dash.draw('pv-opcoes', (tb) => {
+    tb.replaceChildren();
+    tipo('opcao').forEach((o) => { const tr = document.createElement('tr'); const b = { b: o.id === 'real' };
+      td(tr, o.nome, b); td(tr, o.regra, { wrap: 1 }); td(tr, f.brl(o.total), b); td(tr, f.var(o.cresc), b); tb.appendChild(tr); });
+  });
+  set('pv-opcoes-txt', (el, p, m) => {
+    el.textContent = 'Em 2026 a meta interna ficou ' + f.var(m.razao - 1) + ' acima da meta da rede e deve fechar em ' + f.pct(p.atInterna) + '. A conservadora é o piso, porque abaixo dela o grupo não bate a meta da rede. A realista repete a folga de 2026, mas pede ' + f.var(opc('real').cresc) + ' num ano em que as lojas comparáveis devem fechar em ' + f.var(p.crescComp) + '. A regra que liga a meta interna à da rede é uma suposição do painel e precisa ser confirmada pela gestão.';
+  });
+  dash.draw('pv-lojas', (tb) => {
+    tb.replaceChildren();
+    const ls = tipo('loja'); if (!ls.length) return;
+    const sel = AG.loja();
+    ls.forEach((l) => { const tr = document.createElement('tr'); if (l.loja === sel) tr.className = 'sel';
+      td(tr, AG.NOMES[l.loja] || l.loja); td(tr, f.brl(l.ytd)); td(tr, f.brl(l.prov), { b: 1 }); td(tr, em(l.pess) + ' a ' + em(l.otim)); td(tr, f.pct(l.atInterna));
+      td(tr, l.cresc25 == null ? 'loja nova' : f.var(l.cresc25)); td(tr, f.pct1(l.peso)); td(tr, f.brl(l.m27cons)); td(tr, f.brl(l.m27real), { b: 1 }); td(tr, f.brl(l.m27desa)); tb.appendChild(tr); });
+    const s = (k) => ls.reduce((a, l) => a + (l[k] || 0), 0); const p = cen('prov');
+    const tr = document.createElement('tr'); tr.className = 'tot';
+    td(tr, 'Total varejo'); td(tr, f.brl(s('ytd'))); td(tr, f.brl(s('prov'))); td(tr, em(s('pess')) + ' a ' + em(s('otim'))); td(tr, f.pct(p.atInterna)); td(tr, f.var(p.cresc25)); td(tr, f.pct1(s('peso'))); td(tr, f.brl(s('m27cons'))); td(tr, f.brl(s('m27real'))); td(tr, f.brl(s('m27desa')));
+    tb.appendChild(tr);
+  });
+  set('pv-lojas-txt', (el) => {
+    const ls = tipo('loja'); const bate = ls.filter((l) => l.atInterna >= 1).map((l) => l.loja);
+    const comp = ls.filter((l) => l.cresc25 != null).sort((a, b) => b.cresc25 - a.cresc25);
+    const sobe = comp.filter((l) => l.cresc25 > 0).map((l) => l.loja), pior = comp[comp.length - 1];
+    el.textContent = (bate.length ? 'Devem bater a meta interna do ano: ' + bate.join(', ') + '.' : 'Nenhuma loja deve bater a meta interna do ano no cenário provável.') + ' Crescem sobre 2025: ' + (sobe.length ? sobe.join(', ') : 'nenhuma') + '. Maior queda: ' + pior.loja + ' (' + f.var(pior.cresc25) + ').';
+  });
+  dash.draw('pv-bt', (tb) => {
+    tb.replaceChildren();
+    tipo('bt').forEach((b) => { const tr = document.createElement('tr'); td(tr, AG.MESES[b.mes]); td(tr, f.var(b.tend)); td(tr, f.brl(b.prev)); td(tr, f.brl(b.real)); td(tr, f.var(b.erro)); tb.appendChild(tr); });
+  });
+  set('pv-bt-txt', (el, p, m) => { el.textContent = 'Erro médio de ' + f.pct1(m.erroMedio) + ' por mês em ' + tipo('bt').length + ' meses testados. O método errou mais para cima do que para baixo (viés de ' + f.var(m.vies) + '), ou seja, tende a prever um pouco mais do que se realiza. Os cenários usam duas vezes o erro médio (' + f.pct1(m.larg) + ') como largura.'; });
+  set('pv-chart-txt', (el, p, m) => {
+    const ms = tipo('mes').filter((r) => r.prov != null);
+    el.textContent = ms.map((r) => AG.MESES[r.mes] + ': previsão de ' + em(r.prov) + ' (de ' + em(r.pess) + ' a ' + em(r.otim) + ') contra meta interna de ' + em(r.metaInterna)).join('. ') + '.';
+  });
+  set('pv-premissas', (el, p, m) => {
+    el.replaceChildren();
+    const li = (h) => { const x = document.createElement('li'); x.innerHTML = h; el.appendChild(x); };
+    li('<b>Por que um método simples:</b> há só dois anos de dados mensais. Com tão pouco histórico, um modelo estatístico complexo daria uma falsa sensação de precisão.');
+    li('<b>Realizado:</b> vendas de 2026 lançadas na planilha até hoje. Nada é estimado nos meses fechados.');
+    li('<b>O que falta do ano:</b> para cada loja, o mesmo período de 2025 vezes a tendência dela nos últimos 3 meses fechados. Assim a sazonalidade de 2025 (Black Friday, Natal) é mantida. A soma das lojas dá o total.');
+    li('<b>Tendência das lojas comparáveis:</b> ' + f.var(m.gAno) + ' no ano, ' + f.var(m.gRec) + ' nos últimos 3 meses' + (m.gTd != null ? ' e ' + f.var(m.gTd) + ' no mês em andamento.' : '.'));
+    li('<b>Cenários:</b> otimista = provável + ' + f.pct1(m.larg) + '; pessimista = provável ' + f.var(m.dPess) + ' (' + (m.dPess < -m.larg - 1e-9 ? 'o ritmo do mês em andamento, que é pior que o erro do teste' : 'duas vezes o erro do teste') + ').');
+    li('<b>Mercado Avenida (loja nova):</b> não tem 2025. Usa a média dela em 2026 vezes a sazonalidade da rede (dezembro vale ' + m.idxDez.toFixed(2).replace('.', ',') + ' meses médios).');
+    li('<b>Limitações:</b> a base de 2025 é fixa (realizado mensal de cada loja). O painel não conhece ações planejadas, estoque nem o calendário de campanhas. O mês em andamento tem poucos dias e pode distorcer o pessimista.');
+  });
+  set('pv-faltas', (el, p, m) => {
+    el.replaceChildren();
+    const li = (h) => { const x = document.createElement('li'); x.innerHTML = h; el.appendChild(x); };
+    li('<b>Regra da meta interna 2027:</b> o painel supõe a mesma folga de 2026 sobre a da rede. Falta a gestão confirmar.');
+    li('<b>Peso das campanhas:</b> o calendário traz as datas de Black Friday e Natal, mas não quanto elas devem vender. Se forem mais fortes que as de 2025, o provável sobe.');
+    li('<b>Abertura ou fechamento de lojas em 2027:</b> não informado. A divisão por loja supõe as mesmas 10 lojas.');
+    li('<b>Fluxo de clientes:</b> o painel não tem contagem de fluxo, então não mede a conversão por loja.');
+    li('<b>Histórico diário de 2025:</b> não está na base, então o painel não mede o efeito da semana da Black Friday.');
+    li('<b>Participação por loja em 2027:</b> ' + (m.pesosDaPlanilha ? 'lida dos dados (pesos2027).' : 'os dados não trouxeram os pesos; o painel usou os valores padrão.'));
+  });
+  set('pv-h1', (el, p, m) => {
+    el.textContent = 'Nas lojas comparáveis o crescimento sobre 2025 foi ' + f.var(m.gAno) + ' até ' + AG.MESES[m.ultFechado].toLowerCase() + ', ' + f.var(m.gRec) + ' nos últimos 3 meses' + (m.gTd != null ? ' e ' + f.var(m.gTd) + ' no mês em andamento' : '') + '. Hipótese: a perda de fluxo de clientes está aumentando perto do fim do ano. Recomendação: tratar a semana da Black Friday (27/11) e dezembro como decisivos, porque concentram a maior parte do que falta.';
+  });
+  set('pv-h3', (el, p, m) => {
+    const t = tipo('neg').find((r) => r.loja === 'Total');
+    el.textContent = 'A rede conta com preço +' + f.pct(m.preco) + ' para compensar boletos ' + f.var(m.premBol) + '. No grupo, os boletos das lojas comparáveis variaram ' + f.var(t.bol) + ' em 2026. Recomendação: a prioridade para 2027 é segurar fluxo e conversão (atendimento, serviços, exposição de produtos e ações promocionais), porque só o reajuste não cobre uma queda desse tamanho.';
+  });
+  dash.draw('pv-neg', (tb) => {
+    tb.replaceChildren(); const m = meta(); if (!m) return;
+    const sel = AG.loja();
+    tipo('neg').forEach((r) => { const tr = document.createElement('tr'); if (r.loja === 'Total') tr.className = 'tot'; else if (r.loja === sel) tr.className = 'sel';
+      td(tr, r.loja === 'Total' ? '9 lojas comparáveis' : (AG.NOMES[r.loja] || r.loja)); td(tr, f.var(r.bol), { b: 1 }); td(tr, f.var(r.bolRec)); td(tr, f.var(m.premBol));
+      const d = r.bol - m.premBol; const c = td(tr, (d > 0 ? '+' : '') + (d * 100).toFixed(1).replace('.', ',') + ' p.p.'); c.style.color = d < 0 ? '#B04B55' : 'var(--ag-teal)'; c.style.fontWeight = '600';
+      td(tr, f.var(r.bm)); td(tr, f.var(r.fin)); tb.appendChild(tr); });
+  });
+  set('pv-neg-txt', (el, p, m) => {
+    const rs = tipo('neg'); const t = rs.find((r) => r.loja === 'Total'); const st = rs.filter((r) => r.loja !== 'Total');
+    const pior = st.filter((r) => r.bol < m.premBol).sort((a, b) => a.bol - b.bol).map((r) => r.loja + ' (' + f.var(r.bol) + ')');
+    const melhor = st.filter((r) => r.bol >= m.premBol).map((r) => r.loja);
+    el.textContent = 'De janeiro a ' + AG.MESES[m.ultFechado].toLowerCase() + ' os boletos das lojas comparáveis variaram ' + f.var(t.bol) + ' sobre 2025, contra ' + f.var(m.premBol) + ' da premissa da rede para 2027. Nos últimos 3 meses a variação foi de ' + f.var(t.bolRec) + (t.bolAtual != null ? ' e no mês em andamento está em ' + f.var(t.bolAtual) : '') + '. Abaixo da premissa: ' + (pior.length ? pior.join(', ') : 'nenhuma') + '. Na premissa ou acima: ' + (melhor.length ? melhor.join(', ') : 'nenhuma') + '.';
+  });
+  dash.draw('pv-dec', (tb) => {
+    tb.replaceChildren();
+    tipo('dec').forEach((d) => { const tr = document.createElement('tr');
+      td(tr, d.nome, { wrap: 1 }); td(tr, f.var(d.preco)); td(tr, f.var(d.bol)); td(tr, f.var(d.outros)); td(tr, f.var(d.cresc), { b: 1 }); td(tr, f.brl(d.fat));
+      const c = td(tr, d.id === 'rede' ? 'é a meta' : (d.vsMeta > 0 ? '+' : '−') + f.brl(Math.abs(d.vsMeta)).replace('-', '')); if (d.id !== 'rede') { c.style.color = d.vsMeta < 0 ? '#B04B55' : 'var(--ag-teal)'; c.style.fontWeight = '600'; }
+      tb.appendChild(tr); });
+  });
+  set('pv-dec-txt', (el, p, m) => {
+    const d = (id) => tipo('dec').find((r) => r.id === id);
+    el.textContent = 'Se o grupo só mantiver os boletos de 2026, cresce ' + f.var(d('manter').cresc) + ' e supera a meta da rede em ' + f.brl(d('manter').vsMeta) + '. Se repetir a queda de boletos de 2026, o faturamento varia ' + f.var(d('tend').cresc) + ' e fica ' + f.brl(Math.abs(d('tend').vsMeta)) + ' abaixo da meta. Esta última linha é uma hipótese: supõe que a queda de 2026 se repete em 2027 e que preço e serviços rendem no grupo o mesmo que na rede. Serve como argumento técnico para pedir que a premissa de boletos do grupo seja revista por loja.';
+  });
+  set('pv-regras', (el) => {
+    el.replaceChildren();
+    const li = (h) => { const x = document.createElement('li'); x.innerHTML = h; el.appendChild(x); };
+    const dd = (iso) => iso.slice(8, 10) + '/' + iso.slice(5, 7);
+    li('<b>Revisão de metas:</b> feita no prazo definido pela franqueadora, sempre com dados e argumentos técnicos.');
+    li('<b>Metas em valores absolutos</b>, não em percentual.');
+    li('<b>Loja nova:</b> só entra na meta da rede depois de um período de maturação.');
+    li('<b>Fechamento de loja</b> aprovado sai da base de metas.');
+    li('<b>Calendário da reta final:</b> ' + (window.AG_CAMPANHAS || []).map((c) => dd(c.data) + ' ' + c.nome).join(' · ') + '.');
+  });
+  dash.draw('pv-chart', (el) => {
+    const rows = tipo('mes');
+    el.replaceChildren(); if (!rows.length) { el.textContent = '—'; return; }
+    const W = el.clientWidth || 500, H = 280, m = { t: 12, r: 12, b: 24, l: 56 };
+    const x = d3.scaleBand(rows.map((d) => d.mes), [m.l, W - m.r]).padding(0.28);
+    const ymax = d3.max(rows, (d) => Math.max(d.real || 0, d.otim || 0, d.p25 || 0, d.metaInterna || 0)) * 1.08;
+    const y = d3.scaleLinear([0, ymax], [H - m.b, m.t]).nice();
+    const svg = d3.select(el).append('svg').attr('width', '100%').attr('viewBox', `0 0 ${W} ${H}`);
+    svg.append('g').selectAll('line').data(y.ticks(4)).join('line').attr('x1', m.l).attr('x2', W - m.r).attr('y1', y).attr('y2', y).attr('stroke', 'var(--cds-chart-grid)');
+    svg.append('g').selectAll('text').data(y.ticks(4)).join('text').attr('x', m.l - 6).attr('y', y).attr('dy', '0.35em').attr('text-anchor', 'end').attr('fill', 'var(--color-fg-muted)').style('font-size', '11px').text((v) => AG.f.brlc(v));
+    svg.append('g').selectAll('text').data(rows).join('text').attr('x', (d) => x(d.mes) + x.bandwidth() / 2).attr('y', H - 6).attr('text-anchor', 'middle').attr('fill', 'var(--color-fg-muted)').style('font-size', '11px').text((d) => AG.MES3[d.mes]);
+    const t = AG.tip(el); const fut = rows.filter((d) => d.prov != null);
+    svg.append('g').selectAll('rect').data(rows.filter((d) => d.real != null)).join('rect').attr('x', (d) => x(d.mes)).attr('width', x.bandwidth()).attr('rx', 3)
+      .attr('y', (d) => y(d.real)).attr('height', (d) => y(0) - y(d.real)).attr('fill', 'var(--ag-blue)').attr('fill-opacity', (d) => d.mesAtual ? 1 : 0.6);
+    svg.append('g').selectAll('rect').data(fut).join('rect').attr('x', (d) => x(d.mes)).attr('width', x.bandwidth()).attr('rx', 3)
+      .attr('y', (d) => y(d.prov)).attr('height', (d) => Math.max(y(d.real || 0) - y(d.prov), 0)).attr('fill', 'var(--ag-sage)').attr('fill-opacity', 0.45).attr('stroke', 'var(--ag-sage)').attr('stroke-dasharray', '4 3');
+    // faixa pessimista–otimista sombreada
+    svg.append('g').selectAll('rect').data(fut).join('rect').attr('x', (d) => x(d.mes) - 4).attr('width', x.bandwidth() + 8).attr('rx', 3)
+      .attr('y', (d) => y(d.otim)).attr('height', (d) => Math.max(y(d.pess) - y(d.otim), 1)).attr('fill', 'var(--ag-sage)').attr('fill-opacity', 0.35);
+    svg.append('path').datum(rows).attr('fill', 'none').attr('stroke', 'var(--cds-chart-muted)').attr('stroke-width', 2).attr('stroke-linejoin', 'round').attr('stroke-linecap', 'round')
+      .attr('d', d3.line().x((d) => x(d.mes) + x.bandwidth() / 2).y((d) => y(d.p25)));
+    svg.append('g').selectAll('line').data(rows.filter((d) => d.metaInterna != null)).join('line')
+      .attr('x1', (d) => x(d.mes) - 3).attr('x2', (d) => x(d.mes) + x.bandwidth() + 3).attr('y1', (d) => y(d.metaInterna)).attr('y2', (d) => y(d.metaInterna)).attr('stroke', 'var(--ag-teal)').attr('stroke-width', 3).attr('stroke-linecap', 'round');
+    svg.append('g').selectAll('rect').data(rows).join('rect').attr('x', (d) => x(d.mes) - x.step() * x.paddingInner() / 2).attr('width', x.step()).attr('y', m.t).attr('height', H - m.b - m.t).attr('fill', 'transparent')
+      .on('mousemove', (e, d) => t.show(e, [AG.MESES[d.mes], d.real != null ? 'Realizado' + (d.mesAtual ? ' até agora' : '') + ': ' + AG.f.brl(d.real) : 'Sem realizado ainda', d.prov != null ? 'Previsão: ' + AG.f.brl(d.prov) + ' (de ' + AG.f.brl(d.pess) + ' a ' + AG.f.brl(d.otim) + ')' : 'Mês fechado', 'Meta interna: ' + AG.f.brl(d.metaInterna), '2025: ' + AG.f.brl(d.p25)]))
+      .on('mouseleave', () => t.hide());
+  });
+})();
+</script>
+
+<!-- ======================= CONTROLES ======================= -->
+<script>
+(() => {
+  const showTab = (name) => {
+    document.querySelectorAll('[data-page]').forEach((s) => { s.hidden = s.dataset.page !== name; });
+    document.querySelectorAll('[data-tab]').forEach((b) => b.setAttribute('aria-selected', String(b.dataset.tab === name)));
+  };
+  document.querySelectorAll('[data-tab]').forEach((b) => b.addEventListener('click', () => { showTab(b.dataset.tab); dash.setLink(b.dataset.tab); }));
+  const named = location.hash.slice(1);
+  if (named && document.querySelector('[data-page="' + named + '"]')) showTab(named);
+  document.querySelectorAll('[data-ref]').forEach((b) => b.addEventListener('click', () => dash.setParams({ ref: b.dataset.ref })));
+  dash.onData(() => {
+    const r = AG.ref();
+    document.querySelectorAll('[data-ref]').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.ref === r)));
+    // estados vazios
+    const mes = AG.mesAtual();
+    const temSem = AG.rows('semanas').some((x) => x.mes === mes);
+    document.querySelectorAll('[data-empty="semanas"]').forEach((e) => { e.hidden = !AG.ok('semanas') || temSem; });
+    const temDia = AG.rows('base').some((x) => x.mes === mes && x.loja === 'Total' && x.diaMeta != null);
+    document.querySelectorAll('[data-empty="dia"]').forEach((e) => { e.hidden = !AG.ok('base') || temDia; });
+  });
+})();
+
+(() => {
+  // tema claro / escuro
+  const roots = () => document.querySelectorAll('.ag');
+  const setTheme = (dark) => {
+    roots().forEach((r) => r.classList.toggle('dark', dark));
+    document.querySelectorAll('[data-theme-toggle]').forEach((b) => b.setAttribute('aria-pressed', String(dark)));
+  };
+  let dark = false;
+  try { dark = window.matchMedia('(prefers-color-scheme: dark)').matches; } catch (e) {}
+  setTheme(dark);
+  document.querySelectorAll('[data-theme-toggle]').forEach((b) => b.addEventListener('click', () => { dark = !dark; setTheme(dark); dash.draw('rank'); dash.draw('trend'); dash.draw('medias'); }));
+  // limpar filtros
+  document.querySelectorAll('[data-clear]').forEach((b) => b.addEventListener('click', () => dash.resetParams()));
+  dash.onData(() => {
+    const p = dash.params();
+    const sujo = (p.mes != null) || (p.loja && p.loja !== 'Total') || (p.ref && p.ref !== 'Interna');
+    document.querySelectorAll('[data-clear]').forEach((b) => { b.disabled = !sujo; });
+    const r = AG.rows('ritmo').find((x) => x.mes === AG.mesAtual() && x.loja === 'Total');
+    document.querySelectorAll('[data-empty="vend"]').forEach((e) => { e.hidden = !AG.ok('ritmo') || !r || r.diasRest > 0; });
+  });
+})();
+
+dash.draw('f-mes', (sel) => {
+  const ms = AG.mesesComMeta();
+  sel.replaceChildren(...ms.map((m) => new Option(AG.MESES[m], String(m))));
+  sel.value = String(AG.mesAtual() ?? '');
+  sel.onchange = () => dash.setParams({ mes: +sel.value });
+});
+dash.draw('f-loja', (sel) => {
+  const ls = AG.lojasOrd.filter((l) => AG.rows('base').some((r) => r.loja === l));
+  sel.replaceChildren(new Option('Todas (total varejo)', 'Total'), ...ls.map((l) => new Option(l + ' · ' + AG.NOMES[l], l)));
+  sel.value = AG.loja();
+  sel.onchange = () => dash.setParams({ loja: sel.value });
+});
+</script>
+
+<!-- ======================= VISÃO GERAL ======================= -->
+<script>
+(() => {
+  const { f } = AG;
+  const cur = () => AG.rows('base').find((r) => r.mes === AG.mesAtual() && r.loja === AG.loja());
+  const rit = () => AG.rows('ritmo').find((r) => r.mes === AG.mesAtual() && r.loja === AG.loja());
+  const where = () => 'mes=' + AG.mesAtual() + '&loja=' + AG.enc(AG.loja());
+  const set = (el, txt, src, field) => { if (!txt || txt === '—') { el.textContent = '—'; return; } el.textContent = txt; if (field) AG.mark(el, where(), field); };
+
+  dash.draw('take', (el) => {
+    const r = rit(); if (!r) { el.textContent = '—'; return; }
+    const m = AG.MESES[r.mes], ref = AG.ref(), at = r['at' + ref], falta = r['falta' + ref], pd = r['porDia' + ref];
+    const quem = AG.loja() === 'Total' ? 'O varejo' : AG.NOMES[AG.loja()];
+    let s = quem + ' está em ' + f.pct(at) + ' da meta ' + (ref === 'Interna' ? 'interna' : 'da rede') + ' de ' + m + '.';
+    if (r.diasRest > 0 && falta > 0) s += ' Faltam ' + f.brl(falta) + ' em ' + r.diasRest + ' dias: ' + f.brl(pd) + ' por dia.';
+    else if (falta <= 0) s += ' Meta batida, com ' + f.brl(-falta) + ' acima.';
+    else s += ' O mês fechou ' + f.brl(falta) + ' abaixo da meta.';
+    el.textContent = s;
+  });
+  dash.draw('k-real', (el) => { const r = cur(); set(el, r && f.brl(r.real), 'base', 'real'); });
+  dash.draw('k-real-sub', (el) => {
+    const r = cur(); if (!r) { el.textContent = '—'; return; }
+    el.replaceChildren(); el.className = 'ag-sub';
+    const v = AG.loja() === 'Total' ? r.varFinComp : r.varFin;
+    if (v == null) { el.textContent = AG.MESES[r.mes] + ' 2026 · sem base 2025 para comparar'; return; }
+    const b = document.createElement('span'); b.className = AG.cls(v); b.textContent = f.var(v);
+    el.append(b, document.createTextNode(' sobre ' + AG.MES3[r.mes] + '/25' + (AG.loja() === 'Total' ? ' (lojas comparáveis)' : '')));
+  });
+  dash.draw('k-meta', (el) => { const r = cur(); set(el, r && f.brl(r['meta' + AG.ref()]), 'base', 'meta' + AG.ref()); });
+  dash.draw('k-meta-sub', (el) => {
+    const r = cur(); if (!r) { el.textContent = '—'; return; }
+    const o = AG.ref() === 'Interna' ? 'Rede' : 'Interna';
+    el.textContent = (AG.ref() === 'Interna' ? 'Interna (grupo)' : 'Rede (franqueadora)') + ' · ' + (o === 'Rede' ? 'rede' : 'interna') + ': ' + f.brl(r['meta' + o]);
+  });
+  dash.draw('k-pct', (el) => {
+    const r = cur(); if (!r) { el.textContent = '—'; return; }
+    const p = r['at' + AG.ref()]; el.textContent = f.pct(p);
+    el.style.color = p >= 1 ? 'var(--color-ok)' : p >= 0.95 ? 'var(--color-warn)' : '';
+    AG.mark(el, where(), 'at' + AG.ref());
+  });
+  dash.draw('k-pct-sub', (el) => {
+    const r = cur(); if (!r) { el.textContent = '—'; return; }
+    const o = AG.ref() === 'Interna' ? 'Rede' : 'Interna';
+    el.textContent = (o === 'Rede' ? 'Da meta da rede: ' : 'Da meta interna: ') + f.pct(r['at' + o]);
+  });
+  dash.draw('k-falta', (el) => {
+    const r = rit(); if (!r) { el.textContent = '—'; return; }
+    const v = r['falta' + AG.ref()]; el.textContent = v <= 0 ? f.brl(-v) + ' acima' : f.brl(v);
+    el.style.color = v <= 0 ? 'var(--color-ok)' : '';
+    AG.mark(el, where(), 'falta' + AG.ref());
+  });
+  dash.draw('k-falta-sub', (el) => {
+    const r = rit(); if (!r) { el.textContent = '—'; return; }
+    el.textContent = r.diasRest > 0 ? r.diasRest + ' de ' + r.diasMes + ' dias de loja aberta restantes' : 'Mês encerrado (' + r.diasMes + ' dias de loja aberta)';
+  });
+  dash.draw('k-dia', (el) => {
+    const r = rit(); if (!r) { el.textContent = '—'; return; }
+    const v = r['porDia' + AG.ref()];
+    el.textContent = r.diasRest > 0 ? f.brl(v) : '—';
+    AG.mark(el, where(), 'porDia' + AG.ref());
+  });
+  dash.draw('k-dia-sub', (el) => {
+    const r = rit(); if (!r) { el.textContent = '—'; return; }
+    if (!(r.diasRest > 0)) { el.textContent = 'Sem dias restantes no mês selecionado'; return; }
+    el.textContent = r.diaMeta != null ? 'Meta dia na planilha: ' + f.brl(r.diaMeta) : 'Média dinâmica: recalcula a cada dia';
+  });
+  dash.draw('k-ytd', (el) => {
+    const a = AG.rows('acumulado').find((r) => r.ate === AG.mesAtual() && r.loja === AG.loja());
+    if (!a) { el.textContent = '—'; return; }
+    const p = a['at' + AG.ref()]; el.textContent = f.pct1(p);
+    el.style.color = p >= 1 ? 'var(--color-ok)' : p >= 0.95 ? 'var(--color-warn)' : '';
+    AG.mark(el, 'ate=' + AG.mesAtual() + '&loja=' + AG.enc(AG.loja()), 'at' + AG.ref());
+  });
+  dash.draw('k-ytd-sub', (el) => {
+    const a = AG.rows('acumulado').find((r) => r.ate === AG.mesAtual() && r.loja === AG.loja());
+    if (!a) { el.textContent = '—'; return; }
+    const ult = AG.rows('base').filter((r) => r.loja === 'Total' && r.fechado && r.mes <= AG.mesAtual()).map((r) => r.mes);
+    el.textContent = 'Meses fechados (jan–' + AG.MES3[Math.max(...ult)] + '): ' + f.brlc(a.realFechado) + ' de ' + f.brlc(a['meta' + AG.ref() + 'Fechado']);
+  });
+
+  // ranking
+  dash.draw('rank', (el) => {
+    const mes = AG.mesAtual(), ref = AG.ref(), o = ref === 'Interna' ? 'Rede' : 'Interna';
+    const data = AG.rows('base').filter((r) => r.mes === mes && r.loja !== 'Total' && r['at' + ref] != null).sort((a, b) => b['at' + ref] - a['at' + ref]);
+    el.replaceChildren(); if (!data.length) { el.textContent = '—'; return; }
+    const W = el.clientWidth || 500, rowH = 26, m = { t: 8, r: 52, b: 22, l: 70 }, H = m.t + m.b + rowH * data.length;
+    const xmax = Math.max(1.1, d3.max(data, (d) => Math.min(Math.max(d['at' + ref], d['at' + o] || 0), 3)));
+    const x = d3.scaleLinear([0, xmax], [m.l, W - m.r]);
+    const y = d3.scaleBand(data.map((d) => d.loja), [m.t, H - m.b]).padding(0.25);
+    const svg = d3.select(el).append('svg').attr('width', '100%').attr('viewBox', `0 0 ${W} ${H}`);
+    svg.append('g').selectAll('line').data(x.ticks(5)).join('line').attr('x1', x).attr('x2', x).attr('y1', m.t).attr('y2', H - m.b).attr('stroke', 'var(--cds-chart-grid)');
+    svg.append('g').attr('transform', `translate(0,${H - m.b})`).call(d3.axisBottom(x).ticks(5).tickFormat(d3.format('.0%'))).attr('font-size', null).attr('font-family', null).call((g) => g.select('.domain').remove()).selectAll('text').attr('fill', 'var(--color-fg-muted)').style('font-size', '11px');
+    const t = AG.tip(el);
+    const col = (p) => p >= 1 ? 'var(--color-ok)' : p >= 0.95 ? 'var(--color-warn)' : 'var(--color-bad)';
+    svg.append('g').selectAll('rect').data(data).join('rect').attr('x', m.l).attr('y', (d) => y(d.loja)).attr('height', y.bandwidth()).attr('rx', 3)
+      .attr('width', (d) => Math.max(0, x(Math.min(d['at' + ref], xmax)) - m.l)).attr('fill', (d) => col(d['at' + ref])).attr('fill-opacity', (d) => d.loja === AG.loja() || AG.loja() === 'Total' ? 0.85 : 0.35)
+      .style('cursor', 'pointer')
+      .on('click', (e, d) => dash.setParams({ loja: d.loja }))
+      .on('mousemove', (e, d) => t.show(e, [AG.NOMES[d.loja], 'Realizado ' + AG.f.brl(d.real), 'Meta ' + (ref === 'Rede' ? 'da rede' : 'interna') + ' ' + AG.f.brl(d['meta' + ref]) + ' → ' + AG.f.pct(d['at' + ref]), 'Meta ' + (o === 'Rede' ? 'da rede' : 'interna') + ' ' + AG.f.brl(d['meta' + o]) + ' → ' + AG.f.pct(d['at' + o])]))
+      .on('mouseleave', () => t.hide());
+    svg.append('g').selectAll('line').data(data.filter((d) => d['at' + o] != null)).join('line')
+      .attr('x1', (d) => x(Math.min(d['at' + o], xmax))).attr('x2', (d) => x(Math.min(d['at' + o], xmax))).attr('y1', (d) => y(d.loja) - 2).attr('y2', (d) => y(d.loja) + y.bandwidth() + 2)
+      .attr('stroke', 'var(--ag-rose)').attr('stroke-width', 3).attr('stroke-linecap', 'round').style('pointer-events', 'none');
+    svg.append('line').attr('x1', x(1)).attr('x2', x(1)).attr('y1', m.t - 4).attr('y2', H - m.b).attr('stroke', 'var(--cds-chart-reference)').attr('stroke-dasharray', '4 3');
+    svg.append('g').selectAll('text').data(data).join('text').attr('x', m.l - 8).attr('y', (d) => y(d.loja) + y.bandwidth() / 2).attr('dy', '0.35em').attr('text-anchor', 'end').attr('fill', 'var(--color-fg)').style('font-size', '12px').text((d) => d.loja);
+    svg.append('g').selectAll('text').data(data).join('text').attr('x', (d) => x(Math.min(d['at' + ref], xmax)) + 6).attr('y', (d) => y(d.loja) + y.bandwidth() / 2).attr('dy', '0.35em').attr('fill', 'var(--color-fg-muted)').style('font-size', '11px').style('font-variant-numeric', 'tabular-nums').text((d) => AG.f.pct(d['at' + ref]));
+  });
+  dash.draw('note-rank', (el) => {
+    const mes = AG.mesAtual(), ref = AG.ref();
+    const data = AG.rows('base').filter((r) => r.mes === mes && r.loja !== 'Total' && r['at' + ref] != null);
+    if (!data.length) { el.textContent = '—'; return; }
+    const bat = data.filter((d) => d['at' + ref] >= 1).length;
+    const ord = [...data].sort((a, b) => a['at' + ref] - b['at' + ref]);
+    const enc = AG.rows('ritmo').find((r) => r.mes === mes && r.loja === 'Total');
+    if (enc && enc.diasRest > 0) {
+      el.textContent = 'Mês em andamento: ' + enc.diasRest + ' de ' + enc.diasMes + ' dias ainda pela frente, então os % são parciais. Maior avanço até agora: ' + ord[ord.length - 1].loja + ' (' + AG.f.pct(ord[ord.length - 1]['at' + ref]) + ').';
+    } else {
+      el.textContent = bat + ' de ' + data.length + ' lojas bateram a meta ' + (ref === 'Rede' ? 'da rede' : 'interna') + ' em ' + AG.MESES[mes] + '. Mais distante: ' + ord[0].loja + ' (' + AG.f.pct(ord[0]['at' + ref]) + '); melhor: ' + ord[ord.length - 1].loja + ' (' + AG.f.pct(ord[ord.length - 1]['at' + ref]) + ').';
+    }
+  });
+
+  // tendência
+  dash.draw('trend', (el) => {
+    const lj = AG.loja(), ref = AG.ref();
+    const data = AG.rows('base').filter((r) => r.loja === lj).sort((a, b) => a.mes - b.mes);
+    el.replaceChildren(); if (!data.length) { el.textContent = '—'; return; }
+    const W = el.clientWidth || 500, H = 260, m = { t: 12, r: 12, b: 24, l: 56 };
+    const x = d3.scaleBand(data.map((d) => d.mes), [m.l, W - m.r]).padding(0.28);
+    const ymax = d3.max(data, (d) => Math.max(d.real || 0, d['meta' + ref] || 0, d.fin25 || 0)) * 1.08;
+    const y = d3.scaleLinear([0, ymax], [H - m.b, m.t]).nice();
+    const svg = d3.select(el).append('svg').attr('width', '100%').attr('viewBox', `0 0 ${W} ${H}`);
+    svg.append('g').selectAll('line').data(y.ticks(4)).join('line').attr('x1', m.l).attr('x2', W - m.r).attr('y1', y).attr('y2', y).attr('stroke', 'var(--cds-chart-grid)');
+    svg.append('g').selectAll('text').data(y.ticks(4)).join('text').attr('x', m.l - 6).attr('y', y).attr('dy', '0.35em').attr('text-anchor', 'end').attr('fill', 'var(--color-fg-muted)').style('font-size', '11px').text((v) => AG.f.brlc(v));
+    svg.append('g').selectAll('text').data(data).join('text').attr('x', (d) => x(d.mes) + x.bandwidth() / 2).attr('y', H - 6).attr('text-anchor', 'middle').attr('fill', 'var(--color-fg-muted)').style('font-size', '11px').text((d) => AG.MES3[d.mes]);
+    const t = AG.tip(el);
+    svg.append('g').selectAll('rect').data(data).join('rect').attr('x', (d) => x(d.mes)).attr('width', x.bandwidth()).attr('rx', 3)
+      .attr('y', (d) => y(d.real || 0)).attr('height', (d) => y(0) - y(d.real || 0))
+      .attr('fill', 'var(--ag-blue)').attr('fill-opacity', (d) => d.mes === AG.mesAtual() ? 1 : 0.55);
+    const l25 = data.filter((d) => d.fin25 != null);
+    svg.append('path').datum(l25).attr('fill', 'none').attr('stroke', 'var(--cds-chart-muted)').attr('stroke-width', 2).attr('stroke-linejoin', 'round').attr('stroke-linecap', 'round')
+      .attr('d', d3.line().x((d) => x(d.mes) + x.bandwidth() / 2).y((d) => y(d.fin25)));
+    svg.append('g').selectAll('line').data(data.filter((d) => d['meta' + ref] != null)).join('line')
+      .attr('x1', (d) => x(d.mes) - 3).attr('x2', (d) => x(d.mes) + x.bandwidth() + 3).attr('y1', (d) => y(d['meta' + ref])).attr('y2', (d) => y(d['meta' + ref]))
+      .attr('stroke', 'var(--ag-teal)').attr('stroke-width', 3).attr('stroke-linecap', 'round');
+    svg.append('g').selectAll('rect').data(data).join('rect').attr('x', (d) => x(d.mes) - x.step() * x.paddingInner() / 2).attr('width', x.step()).attr('y', m.t).attr('height', H - m.b - m.t).attr('fill', 'transparent')
+      .on('mousemove', (e, d) => t.show(e, [AG.MESES[d.mes], 'Realizado 2026: ' + AG.f.brl(d.real), 'Meta ' + (ref === 'Rede' ? 'da rede' : 'interna') + ': ' + AG.f.brl(d['meta' + ref]) + ' (' + AG.f.pct(d['at' + ref]) + ')', 'Realizado 2025: ' + AG.f.brl(d.fin25)]))
+      .on('mouseleave', () => t.hide());
+  });
+  dash.draw('note-trend', (el) => {
+    const lj = AG.loja(), ref = AG.ref();
+    const data = AG.rows('base').filter((r) => r.loja === lj && r.fechado && r['at' + ref] != null);
+    const a = AG.rows('acumulado').find((r) => r.ate === AG.mesAtual() && r.loja === lj);
+    if (!data.length || !a) { el.textContent = '—'; return; }
+    const bat = data.filter((d) => d['at' + ref] >= 1).length;
+    const best = data.reduce((p, c) => (c.real > p.real ? c : p));
+    el.textContent = (lj === 'Total' ? 'O varejo' : lj) + ' bateu a meta ' + (ref === 'Rede' ? 'da rede' : 'interna') + ' em ' + bat + ' de ' + data.length + ' meses fechados. Pico de venda em ' + AG.MESES[best.mes] + ' (' + AG.f.brl(best.real) + ').' + (a.varFin != null ? ' Acumulado comparável vs 2025: ' + AG.f.var(a.varFin) + '.' : ' Sem base 2025 (loja nova).');
+  });
+})();
+</script>
+
+<!-- ======================= METAS ======================= -->
+<script>
+(() => {
+  const { f } = AG;
+  dash.draw('metas-tbody', (tb) => {
+    const mes = AG.mesAtual();
+    const rs = AG.rows('ritmo').filter((r) => r.mes === mes);
+    tb.replaceChildren();
+    const ord = [...AG.lojasOrd, 'Total'];
+    rs.sort((a, b) => ord.indexOf(a.loja) - ord.indexOf(b.loja)).forEach((r) => {
+      const tr = document.createElement('tr'); tr.dataset.key = r.mes + ',' + encodeURIComponent(r.loja);
+      if (r.loja === 'Total') tr.className = 'tot'; else if (r.loja === AG.loja()) tr.className = 'sel';
+      const td = (txt, c) => { const e = document.createElement('td'); if (c) { const s = document.createElement('span'); s.className = c; s.textContent = txt; e.appendChild(s); } else e.textContent = txt; tr.appendChild(e); };
+      const fal = (v) => v == null ? '—' : v <= 0 ? '+' + f.brl(-v) : f.brl(v);
+      td(r.loja);
+      td(f.brl(r.metaInterna)); td(f.brl(r.real)); td(f.pct(r.atInterna), 'pill ' + AG.status(r.atInterna)); td(fal(r.faltaInterna), r.faltaInterna <= 0 ? 'pos' : '');
+      td(f.brl(r.metaRede)); td(f.pct(r.atRede), 'pill ' + AG.status(r.atRede)); td(fal(r.faltaRede), r.faltaRede <= 0 ? 'pos' : '');
+      td(String(r.diasRest)); td(r.diasRest ? f.brl(r.porDiaInterna) : '—'); td(r.diasRest ? f.brl(r.porDiaRede) : '—');
+      tr.style.cursor = 'pointer'; tr.onclick = () => dash.setParams({ loja: r.loja });
+      tb.appendChild(tr);
+    });
+  });
+  dash.draw('note-metas', (el) => {
+    const mes = AG.mesAtual(), ref = AG.ref();
+    const rs = AG.rows('ritmo').filter((r) => r.mes === mes && r.loja !== 'Total' && r['falta' + ref] != null);
+    if (!rs.length) { el.textContent = '—'; return; }
+    const t = AG.rows('ritmo').find((r) => r.mes === mes && r.loja === 'Total');
+    const top = [...rs].sort((a, b) => b['falta' + ref] - a['falta' + ref]).slice(0, 3);
+    const tot = rs.reduce((s, r) => s + Math.max(r['falta' + ref], 0), 0);
+    const share = top.reduce((s, r) => s + Math.max(r['falta' + ref], 0), 0) / tot;
+    el.textContent = (t.diasRest > 0 ? 'Restam ' : 'Ficaram ') + f.brl(tot) + ' de meta ' + (ref === 'Rede' ? 'da rede' : 'interna') + ' em aberto somando as lojas abaixo da meta; ' + top.map((r) => r.loja).join(', ') + ' concentram ' + f.pct(share) + ' desse valor.';
+  });
+
+  dash.draw('semanas', (el) => {
+    const mes = AG.mesAtual(), ref = AG.ref();
+    const rs = AG.rows('semanas').filter((r) => r.mes === mes);
+    el.replaceChildren(); if (!rs.length) { el.textContent = '—'; return; }
+    const sem = [...new Set(rs.map((r) => r.semana))].sort((a, b) => a - b);
+    const dd = (iso) => iso.slice(8, 10) + '/' + iso.slice(5, 7);
+    const tbl = document.createElement('table'); const th = document.createElement('thead'); const hr = document.createElement('tr');
+    const h = (t) => { const e = document.createElement('th'); e.textContent = t; hr.appendChild(e); };
+    const camp = (r) => (window.AG_CAMPANHAS || []).filter((c) => c.data >= r.ini && c.data <= r.fim);
+    h('Loja'); sem.forEach((s) => { const r = rs.find((x) => x.semana === s); h('S' + s + ' · ' + dd(r.ini) + '–' + dd(r.fim));
+      const cs = camp(r); if (cs.length) { const e = hr.lastChild; cs.forEach((c) => { const b = document.createElement('span'); b.className = 'wk-camp'; b.textContent = dd(c.data) + ' ' + c.nome; e.appendChild(b); }); } });
+    th.appendChild(hr); tbl.appendChild(th);
+    const tb = document.createElement('tbody');
+    [...AG.lojasOrd, 'Total'].forEach((l) => {
+      const lr = rs.filter((r) => r.loja === l); if (!lr.length) return;
+      const tr = document.createElement('tr'); if (l === 'Total') tr.className = 'tot'; else if (l === AG.loja()) tr.className = 'sel';
+      const c0 = document.createElement('td'); c0.textContent = l; tr.appendChild(c0);
+      sem.forEach((s) => { const r = lr.find((x) => x.semana === s); const c = document.createElement('td'); c.textContent = r ? f.brl(r['meta' + ref]) + (r.dias ? '' : '') : '—'; c.title = r ? r.dias + ' dias' : ''; tr.appendChild(c); });
+      tb.appendChild(tr);
+    });
+    tbl.appendChild(tb); el.appendChild(tbl);
+  });
+
+  dash.draw('dia', (el) => {
+    const mes = AG.mesAtual();
+    const data = AG.rows('base').filter((r) => r.mes === mes && r.loja !== 'Total' && r.diaMeta != null);
+    el.replaceChildren(); if (!data.length) return;
+    const W = el.clientWidth || 500, H = 250, m = { t: 14, r: 8, b: 26, l: 48 };
+    const x = d3.scaleBand(data.map((d) => d.loja), [m.l, W - m.r]).padding(0.25);
+    const y = d3.scaleLinear([0, d3.max(data, (d) => Math.max(d.diaMeta, d.diaReal || 0)) * 1.1], [H - m.b, m.t]).nice();
+    const svg = d3.select(el).append('svg').attr('width', '100%').attr('viewBox', `0 0 ${W} ${H}`);
+    svg.append('g').selectAll('line').data(y.ticks(4)).join('line').attr('x1', m.l).attr('x2', W - m.r).attr('y1', y).attr('y2', y).attr('stroke', 'var(--cds-chart-grid)');
+    svg.append('g').selectAll('text').data(y.ticks(4)).join('text').attr('x', m.l - 6).attr('y', y).attr('dy', '0.35em').attr('text-anchor', 'end').attr('fill', 'var(--color-fg-muted)').style('font-size', '11px').text((v) => AG.f.brlc(v));
+    const t = AG.tip(el);
+    svg.append('g').selectAll('rect').data(data).join('rect').attr('x', (d) => x(d.loja)).attr('width', x.bandwidth()).attr('y', (d) => y(d.diaMeta)).attr('height', (d) => y(0) - y(d.diaMeta)).attr('rx', 3)
+      .attr('fill', 'color-mix(in srgb, var(--ag-teal) 22%, transparent)').attr('stroke', 'var(--ag-teal)');
+    const iw = x.bandwidth() * 0.5;
+    svg.append('g').selectAll('rect').data(data).join('rect').attr('x', (d) => x(d.loja) + (x.bandwidth() - iw) / 2).attr('width', iw).attr('y', (d) => y(d.diaReal || 0)).attr('height', (d) => y(0) - y(d.diaReal || 0)).attr('rx', 2)
+      .attr('fill', (d) => (d.diaReal || 0) >= d.diaMeta ? 'var(--color-ok)' : 'var(--ag-blue)');
+    svg.append('g').selectAll('text').data(data).join('text').attr('x', (d) => x(d.loja) + x.bandwidth() / 2).attr('y', H - 8).attr('text-anchor', 'middle').attr('fill', 'var(--color-fg-muted)').style('font-size', W < 480 ? '9px' : '11px').text((d) => d.loja);
+    svg.append('g').selectAll('rect').data(data).join('rect').attr('x', (d) => x(d.loja)).attr('width', x.bandwidth()).attr('y', m.t).attr('height', H - m.b - m.t).attr('fill', 'transparent')
+      .on('mousemove', (e, d) => t.show(e, [AG.NOMES[d.loja], 'Meta dia: ' + AG.f.brl(d.diaMeta), 'Realizado: ' + AG.f.brl(d.diaReal) + ' (' + AG.f.pct((d.diaReal || 0) / d.diaMeta) + ')']))
+      .on('mouseleave', () => t.hide());
+  });
+  dash.draw('note-dia', (el) => {
+    const mes = AG.mesAtual();
+    const t = AG.rows('ritmo').find((r) => r.mes === mes && r.loja === 'Total');
+    const st = AG.rows('ritmo').filter((r) => r.mes === mes && r.loja !== 'Total' && r.diaMeta != null);
+    if (!t || t.diaMeta == null) { el.textContent = '—'; return; }
+    const bat = st.filter((r) => (r.diaReal || 0) >= r.diaMeta).map((r) => r.loja);
+    let s = 'No último dia registrado, o varejo fez ' + f.brl(t.diaReal) + ' contra meta dia de ' + f.brl(t.diaMeta) + ' (' + f.pct(t.diaReal / t.diaMeta) + ')' + (bat.length ? '; bateram: ' + bat.join(', ') + '.' : '; nenhuma loja bateu.');
+    if (t.diasRest > 0) s += ' Para fechar a meta interna, o ritmo necessário hoje é ' + f.brl(t.porDiaInterna) + '/dia — ' + (t.porDiaInterna > t.diaMeta ? f.pct(t.porDiaInterna / t.diaMeta - 1) + ' acima' : 'abaixo') + ' da meta dia da planilha.';
+    el.textContent = s;
+  });
+
+  dash.draw('heat', (el) => {
+    const ref = AG.ref();
+    const b = AG.rows('base').filter((r) => r['at' + ref] != null);
+    el.replaceChildren(); if (!b.length) { el.textContent = '—'; return; }
+    const ms = [...new Set(b.map((r) => r.mes))].sort((a, c) => a - c);
+    const grid = document.createElement('div'); grid.className = 'ag-heat';
+    grid.style.gridTemplateColumns = `minmax(3.5rem,auto) repeat(${ms.length}, minmax(2.4rem,1fr))`;
+    const cell = (t, c, st) => { const d = document.createElement('div'); d.textContent = t; if (c) d.className = c; if (st) Object.assign(d.style, st); grid.appendChild(d); return d; };
+    cell('', 'hd'); ms.forEach((m) => cell(AG.MES3[m], 'hd'));
+    const parcial = AG.rows('ritmo').filter((r) => r.loja === 'Total' && r.diasRest > 0).map((r) => r.mes);
+    [...AG.lojasOrd, 'Total'].forEach((l) => {
+      cell(l, 'rl', l === 'Total' ? { fontWeight: '600' } : null);
+      ms.forEach((m) => {
+        const r = b.find((x) => x.loja === l && x.mes === m); const p = r ? r['at' + ref] : null;
+        const isP = parcial.includes(m);
+        const colr = p == null ? 'transparent' : isP ? 'color-mix(in srgb, var(--cds-chart-muted) 25%, transparent)' : p >= 1 ? 'color-mix(in srgb, var(--color-ok) 28%, transparent)' : p >= 0.95 ? 'color-mix(in srgb, var(--color-warn) 30%, transparent)' : `color-mix(in srgb, var(--color-bad) ${Math.round(18 + Math.min(1, (0.95 - p) / 0.35) * 30)}%, transparent)`;
+        const d = cell(p == null ? '—' : f.pct(p), null, { background: colr, fontWeight: l === 'Total' ? '600' : '400', cursor: 'pointer', outline: l === AG.loja() && m === AG.mesAtual() ? '2px solid var(--ag-blue)' : 'none' });
+        d.title = AG.NOMES[l] + ' · ' + AG.MESES[m] + (isP ? ' (parcial)' : '') + (r ? ': ' + f.brl(r.real) + ' de ' + f.brl(r['meta' + ref]) : '');
+        d.onclick = () => dash.setParams({ loja: l, mes: m });
+      });
+    });
+    el.appendChild(grid);
+  });
+  dash.draw('note-heat', (el) => {
+    const ref = AG.ref();
+    const b = AG.rows('base').filter((r) => r.loja !== 'Total' && r.fechado && r['at' + ref] != null);
+    if (!b.length) { el.textContent = '—'; return; }
+    const by = d3.rollups(b, (v) => ({ n: v.length, bat: v.filter((r) => r['at' + ref] >= 1).length }), (r) => r.loja).sort((a, c) => c[1].bat - a[1].bat);
+    const n = by[0][1].n;
+    const zero = by.filter(([, v]) => v.bat <= 1).map(([l]) => l);
+    el.textContent = 'Nos ' + n + ' meses fechados, quem mais bateu a meta ' + (ref === 'Rede' ? 'da rede' : 'interna') + ': ' + by.slice(0, 2).map(([l, v]) => l + ' (' + v.bat + '×)').join(' e ') + '. ' + (zero.length ? 'Bateram no máximo 1 vez: ' + zero.join(', ') + '. ' : '') + 'Clique numa célula para filtrar loja e mês.';
+  });
+})();
+</script>
+
+<!-- ======================= VENDAS / MÉDIAS ======================= -->
+<script>
+(() => {
+  const { f } = AG;
+  const fonte = () => {
+    const mes = AG.mesAtual();
+    const m = AG.rows('base').filter((r) => r.mes === mes && r.loja !== 'Total' && r.varFin != null);
+    if (m.length) return { label: AG.MESES[mes], rows: m.map((r) => ({ ...r })) };
+    const fech = AG.rows('base').filter((r) => r.loja === 'Total' && r.fechado && r.mes <= mes).map((r) => r.mes);
+    const ate = Math.max(...fech);
+    const a = AG.rows('acumulado').filter((r) => r.ate === ate && r.loja !== 'Total' && r.varFin != null);
+    return { label: 'jan–' + AG.MES3[ate], rows: a };
+  };
+  dash.draw('yoy', (el) => {
+    const { rows } = fonte();
+    el.replaceChildren(); if (!rows.length) { el.textContent = '—'; return; }
+    const data = rows.sort((a, b) => b.varFin - a.varFin);
+    const W = el.clientWidth || 500, rowH = 34, m = { t: 8, r: 16, b: 22, l: 64 }, H = m.t + m.b + rowH * data.length;
+    const ext = d3.max(data, (d) => Math.max(Math.abs(d.varFin), Math.abs(d.varFis || 0), Math.abs(d.varBol || 0)));
+    const lim = Math.min(Math.max(0.1, ext), 1.5);
+    const x = d3.scaleLinear([-lim, lim], [m.l, W - m.r]);
+    const y = d3.scaleBand(data.map((d) => d.loja), [m.t, H - m.b]).padding(0.2);
+    const keys = [['varFin', 'var(--ag-blue)'], ['varFis', 'var(--ag-sage)'], ['varBol', 'var(--ag-rose)']];
+    const yi = d3.scaleBand(keys.map((k) => k[0]), [0, y.bandwidth()]).padding(0.1);
+    const svg = d3.select(el).append('svg').attr('width', '100%').attr('viewBox', `0 0 ${W} ${H}`);
+    svg.append('g').selectAll('line').data(x.ticks(5)).join('line').attr('x1', x).attr('x2', x).attr('y1', m.t).attr('y2', H - m.b).attr('stroke', 'var(--cds-chart-grid)');
+    svg.append('g').attr('transform', `translate(0,${H - m.b})`).call(d3.axisBottom(x).ticks(5).tickFormat(d3.format('+.0%'))).attr('font-size', null).attr('font-family', null).call((g) => g.select('.domain').remove()).selectAll('text').attr('fill', 'var(--color-fg-muted)').style('font-size', '11px');
+    const t = AG.tip(el);
+    keys.forEach(([k, c]) => {
+      svg.append('g').selectAll('rect').data(data.filter((d) => d[k] != null)).join('rect')
+        .attr('x', (d) => x(Math.min(0, Math.max(-lim, d[k])))).attr('width', (d) => Math.abs(x(Math.max(-lim, Math.min(lim, d[k]))) - x(0)))
+        .attr('y', (d) => y(d.loja) + yi(k)).attr('height', yi.bandwidth()).attr('fill', c).attr('rx', 2);
+    });
+    svg.append('line').attr('x1', x(0)).attr('x2', x(0)).attr('y1', m.t).attr('y2', H - m.b).attr('stroke', 'var(--cds-chart-axis)');
+    svg.append('g').selectAll('text').data(data).join('text').attr('x', m.l - 8).attr('y', (d) => y(d.loja) + y.bandwidth() / 2).attr('dy', '0.35em').attr('text-anchor', 'end').attr('fill', 'var(--color-fg)').style('font-size', '12px').text((d) => d.loja);
+    svg.append('g').selectAll('rect').data(data).join('rect').attr('x', m.l).attr('width', W - m.l - m.r).attr('y', (d) => y(d.loja)).attr('height', y.bandwidth()).attr('fill', 'transparent')
+      .on('mousemove', (e, d) => t.show(e, [AG.NOMES[d.loja], 'Financeiro: ' + f.var(d.varFin), 'Físico: ' + f.var(d.varFis), 'Boletos: ' + f.var(d.varBol)]))
+      .on('mouseleave', () => t.hide());
+  });
+  dash.draw('note-yoy', (el) => {
+    const mes = AG.mesAtual();
+    const fech = AG.rows('base').filter((r) => r.loja === 'Total' && r.fechado && r.mes <= mes).map((r) => r.mes);
+    const ate = Math.max(...fech);
+    const a = AG.rows('acumulado').filter((r) => r.ate === ate && r.varFin != null);
+    const t = a.find((r) => r.loja === 'Total'); const st = a.filter((r) => r.loja !== 'Total').sort((x, y) => y.varFin - x.varFin);
+    if (!t || !st.length) { el.textContent = '—'; return; }
+    const neg = st.filter((r) => r.varFin < 0).map((r) => r.loja);
+    el.textContent = 'Acumulado jan–' + AG.MES3[ate] + ', lojas comparáveis: ' + f.var(t.varFin) + ' no financeiro, ' + f.var(t.varFis) + ' em peças e ' + f.var(t.varBol) + ' em boletos. Lidera ' + st[0].loja + ' (' + f.var(st[0].varFin) + '); ' + (neg.length ? 'abaixo de 2025: ' + neg.join(', ') + '.' : 'nenhuma abaixo de 2025.');
+  });
+
+  dash.draw('share', (el) => {
+    const mes = AG.mesAtual();
+    const a = AG.rows('acumulado').filter((r) => r.ate === mes && r.loja !== 'Total' && r.real > 0).sort((x, y) => y.real - x.real);
+    el.replaceChildren(); if (!a.length) { el.textContent = '—'; return; }
+    const tot = d3.sum(a, (d) => d.real);
+    const W = el.clientWidth || 500, rowH = 24, m = { t: 6, r: 110, b: 6, l: 64 }, H = m.t + m.b + rowH * a.length;
+    const x = d3.scaleLinear([0, d3.max(a, (d) => d.real / tot)], [m.l, W - m.r]);
+    const y = d3.scaleBand(a.map((d) => d.loja), [m.t, H - m.b]).padding(0.25);
+    const svg = d3.select(el).append('svg').attr('width', '100%').attr('viewBox', `0 0 ${W} ${H}`);
+    svg.append('g').selectAll('rect').data(a).join('rect').attr('x', m.l).attr('y', (d) => y(d.loja)).attr('height', y.bandwidth()).attr('rx', 3).attr('width', (d) => x(d.real / tot) - m.l)
+      .attr('fill', (d) => d.loja === AG.loja() ? 'var(--ag-blue)' : 'var(--ag-teal)').attr('fill-opacity', (d) => d.loja === AG.loja() || AG.loja() === 'Total' ? 0.85 : 0.4);
+    svg.append('g').selectAll('text').data(a).join('text').attr('x', m.l - 8).attr('y', (d) => y(d.loja) + y.bandwidth() / 2).attr('dy', '0.35em').attr('text-anchor', 'end').attr('fill', 'var(--color-fg)').style('font-size', '12px').text((d) => d.loja);
+    svg.append('g').selectAll('text').data(a).join('text').attr('x', (d) => x(d.real / tot) + 6).attr('y', (d) => y(d.loja) + y.bandwidth() / 2).attr('dy', '0.35em').attr('fill', 'var(--color-fg-muted)').style('font-size', '11px').text((d) => f.pct1(d.real / tot) + ' · ' + f.brlc(d.real));
+  });
+  dash.draw('note-share', (el) => {
+    const a = AG.rows('acumulado').filter((r) => r.ate === AG.mesAtual() && r.loja !== 'Total' && r.real > 0).sort((x, y) => y.real - x.real);
+    if (!a.length) { el.textContent = '—'; return; }
+    const tot = d3.sum(a, (d) => d.real), top3 = d3.sum(a.slice(0, 3), (d) => d.real);
+    el.textContent = a.slice(0, 3).map((d) => d.loja).join(', ') + ' respondem por ' + f.pct(top3 / tot) + ' do faturamento de 2026 (' + f.brlc(tot) + '). ' + a[0].loja + ' sozinha pesa ' + f.pct(a[0].real / tot) + ': cada ponto de % de meta dela vale mais que o de qualquer outra loja.';
+  });
+
+  const MET = [['pm', 'Preço médio', 'var(--ag-blue)', (v) => f.brl2(v)], ['bm', 'Boleto médio', 'var(--ag-teal)', (v) => f.brl2(v)], ['pd', 'Peças por boleto', 'var(--ag-sage)', (v) => f.n2(v)]];
+  const norm = (r) => {
+    const g = (k) => r[k] != null ? r[k] : r[k + 'c'];
+    return { loja: r.loja, fin25: g('fin25'), fis25: g('fis25'), bol25: g('bol25'), fin26: g('fin26'), fis26: g('fis26'), bol26: g('bol26') };
+  };
+  const medias = (x) => ({ ...x, pm25: x.fis25 ? x.fin25 / x.fis25 : null, pm26: x.fis26 ? x.fin26 / x.fis26 : null, bm25: x.bol25 ? x.fin25 / x.bol25 : null, bm26: x.bol26 ? x.fin26 / x.bol26 : null, pd25: x.bol25 ? x.fis25 / x.bol25 : null, pd26: x.bol26 ? x.fis26 / x.bol26 : null });
+  const mdRows = () => { const { rows, label } = fonte(); return { label, rows: rows.map((r) => medias(norm(r))).filter((r) => r.fin25 && r.fin26) }; };
+  dash.draw('md-periodo', (el) => { const { label, rows } = mdRows(); el.textContent = rows.length ? label + (label.startsWith('jan') ? ' (acumulado, lojas com base 2025)' : '') : '—'; });
+  dash.draw('md-tiles', (el) => {
+    const { rows } = mdRows(); el.replaceChildren(); if (!rows.length) { el.textContent = '—'; return; }
+    const lj = AG.loja();
+    let r = rows.find((x) => x.loja === lj);
+    if (!r) { const sum = (k) => rows.reduce((s, x) => s + (x[k] || 0), 0); r = medias({ loja: 'Total', fin25: sum('fin25'), fis25: sum('fis25'), bol25: sum('bol25'), fin26: sum('fin26'), fis26: sum('fis26'), bol26: sum('bol26') }); }
+    const mk = (tag, cls, txt) => { const e = document.createElement(tag); if (cls) e.className = cls; if (txt != null) e.textContent = txt; return e; };
+    MET.forEach(([k, lab, col, fmt]) => {
+      const t = mk('div', 'md-tile');
+      const h = mk('h3'); const dot = mk('i'); dot.style.background = col; h.append(dot, document.createTextNode(lab + (r.loja === 'Total' ? ' · todas as lojas' : ' · ' + r.loja))); t.appendChild(h);
+      const v = mk('div', 'md-vals');
+      const y1 = mk('div', 'md-y'); y1.append(mk('small', null, '2025'), mk('span', null, fmt(r[k + '25'])));
+      const y2 = mk('div', 'md-y now'); y2.append(mk('small', null, '2026'), mk('span', null, fmt(r[k + '26'])));
+      v.append(y1, mk('span', 'md-arrow', '→'), y2); t.appendChild(v);
+      const d = r[k + '25'] ? r[k + '26'] / r[k + '25'] - 1 : null;
+      t.appendChild(mk('span', 'md-delta ' + (d >= 0 ? 'up' : 'down'), (d >= 0 ? '▲ ' : '▼ ') + f.var(d)));
+      const mx = Math.max(r[k + '25'], r[k + '26']);
+      const bars = mk('div', 'md-bars');
+      [['2025', r[k + '25'], 'var(--cds-chart-muted)'], ['2026', r[k + '26'], col]].forEach(([yy, val, c]) => {
+        const row = mk('div', 'md-bar'); const tr = mk('div'); const fill = mk('i'); fill.style.width = (val / mx * 100) + '%'; fill.style.background = c; tr.appendChild(fill); row.append(mk('span', null, yy), tr); bars.appendChild(row);
+      });
+      t.appendChild(bars);
+      el.appendChild(t);
+    });
+  });
+  dash.draw('medias', (el) => {
+    const { rows } = mdRows();
+    el.replaceChildren(); if (!rows.length) { el.textContent = '—'; return; }
+    const data = rows.map((r) => ({ ...r, dpm: r.pm26 / r.pm25 - 1, dbm: r.bm26 / r.bm25 - 1, dpd: r.pd26 / r.pd25 - 1 })).sort((a, b) => b.dbm - a.dbm);
+    const W = el.clientWidth || 700; const cols = W < 680 ? 1 : 3; const gap = 18; const pw = (W - gap * (cols - 1)) / cols;
+    const rowH = 28, m = { t: 34, r: 48, b: 8, l: 62 }, ph = m.t + m.b + rowH * data.length;
+    const H = ph * Math.ceil(3 / cols) + (cols === 1 ? gap * 2 : 0);
+    const svg = d3.select(el).append('svg').attr('width', '100%').attr('viewBox', `0 0 ${W} ${H}`);
+    const t = AG.tip(el);
+    const lim = Math.max(0.05, d3.max(data, (d) => Math.max(Math.abs(d.dpm), Math.abs(d.dbm), Math.abs(d.dpd))));
+    MET.forEach(([k, lab, col, fmt], i) => {
+      const ox = (i % cols) * (pw + gap), oy = Math.floor(i / cols) * (ph + (cols === 1 ? gap : 0));
+      const g = svg.append('g').attr('transform', `translate(${ox},${oy})`);
+      const x = d3.scaleLinear([-lim, lim], [m.l, pw - m.r]);
+      const y = d3.scaleBand(data.map((d) => d.loja), [m.t, ph - m.b]).padding(0.28);
+      g.append('circle').attr('cx', 6).attr('cy', 13).attr('r', 5).attr('fill', col);
+      g.append('text').attr('x', 16).attr('y', 17).attr('fill', 'var(--ag-fg)').style('font-size', '13px').style('font-weight', '600').text(lab);
+      g.append('line').attr('x1', x(0)).attr('x2', x(0)).attr('y1', m.t - 4).attr('y2', ph - m.b).attr('stroke', 'var(--cds-chart-axis)');
+      g.selectAll('.lb').data(data).join('text').attr('x', m.l - 8).attr('y', (d) => y(d.loja) + y.bandwidth() / 2).attr('dy', '0.35em').attr('text-anchor', 'end')
+        .attr('fill', (d) => d.loja === AG.loja() ? 'var(--ag-blue)' : 'var(--ag-fg)').style('font-size', '12px').style('font-weight', (d) => d.loja === AG.loja() ? '700' : '400').text((d) => d.loja);
+      const v = (d) => d['d' + k];
+      g.selectAll('.br').data(data).join('rect').attr('x', (d) => x(Math.min(0, v(d)))).attr('width', (d) => Math.max(2, Math.abs(x(v(d)) - x(0))))
+        .attr('y', (d) => y(d.loja)).attr('height', y.bandwidth()).attr('rx', 5)
+        .attr('fill', (d) => v(d) >= 0 ? 'var(--ag-ok)' : 'var(--ag-bad)').attr('fill-opacity', (d) => AG.loja() === 'Total' || d.loja === AG.loja() ? 0.8 : 0.3)
+        .style('cursor', 'pointer').on('click', (e, d) => dash.setParams({ loja: d.loja }))
+        .on('mousemove', (e, d) => { t.show(e, [AG.NOMES[d.loja] + ' · ' + lab, '2025: ' + fmt(d[k + '25']), '2026: ' + fmt(d[k + '26']), 'Variação: ' + f.var(v(d))]); })
+        .on('mouseleave', () => t.hide());
+      g.selectAll('.vl').data(data).join('text').attr('x', (d) => v(d) >= 0 ? x(v(d)) + 5 : x(v(d)) - 5).attr('y', (d) => y(d.loja) + y.bandwidth() / 2).attr('dy', '0.35em')
+        .attr('text-anchor', (d) => v(d) >= 0 ? 'start' : 'end').attr('fill', (d) => v(d) >= 0 ? 'var(--ag-ok)' : 'var(--ag-bad)').style('font-size', '11px').style('font-weight', '600').style('font-variant-numeric', 'tabular-nums')
+        .text((d) => f.var(v(d))).each(function (d) { if (v(d) < 0 && x(v(d)) - 5 - this.getComputedTextLength() < m.l) { d3.select(this).attr('x', x(0) + 5).attr('text-anchor', 'start'); } });
+    });
+  });
+  dash.draw('note-medias', (el) => {
+    const mes = AG.mesAtual();
+    const fech = AG.rows('base').filter((r) => r.loja === 'Total' && r.fechado && r.mes <= mes).map((r) => r.mes);
+    const t = AG.rows('acumulado').find((r) => r.ate === Math.max(...fech) && r.loja === 'Total');
+    if (!t) { el.textContent = '—'; return; }
+    const vpm = t.pm26 / t.pm25 - 1, vpd = t.pd26 / t.pd25 - 1;
+    el.textContent = 'No acumulado das lojas comparáveis, cada cliente gasta ' + f.var(t.varBM) + ' por compra (' + f.brl2(t.bm25) + ' → ' + f.brl2(t.bm26) + '). Isso vem de ' + (vpd > vpm ? 'mais peças por compra (' + f.var(vpd) + ') e, em menor parte, de peças mais caras (' + f.var(vpm) + ').' : 'peças mais caras (' + f.var(vpm) + ') e, em menor parte, de mais peças por compra (' + f.var(vpd) + ').');
+  });
+})();
+</script>
+
+<!-- ======================= INSIGHTS ======================= -->
+<script>
+(() => {
+  const { f } = AG;
+  const tot = () => {
+    const ms = AG.rows('ritmo').filter((r) => r.loja === 'Total' && r.diasRest > 0).map((r) => r.mes);
+    const mes = ms.length ? Math.min(...ms) : AG.mesAtual();
+    return AG.rows('ritmo').find((r) => r.mes === mes && r.loja === 'Total');
+  };
+  dash.draw('i1-falta', (el) => { const t = tot(); el.textContent = t ? f.brl(Math.max(t.faltaInterna, 0)) + ' (' + AG.MESES[t.mes] + ')' : '—'; });
+  dash.draw('i1-dias', (el) => { const t = tot(); el.textContent = t ? String(t.diasRest) : '—'; });
+  dash.draw('i1-dia', (el) => { const t = tot(); el.textContent = t && t.diasRest ? f.brl(t.porDiaInterna) : '—'; });
+  dash.draw('i1-metadia', (el) => {
+    const t = tot(); if (!t || t.diaMeta == null || !t.diasRest) { el.textContent = '—'; return; }
+    el.textContent = 'A soma das metas dia registradas na planilha é ' + f.brl(t.diaMeta) + (t.porDiaInterna > t.diaMeta ? ', ' + f.pct(t.porDiaInterna / t.diaMeta - 1) + ' abaixo do ritmo necessário.' : ', compatível com o ritmo necessário.');
+  });
+  dash.draw('i2', (el) => {
+    const t = tot(); if (!t) { el.textContent = '—'; return; }
+    const st = AG.rows('ritmo').filter((r) => r.mes === t.mes && r.loja !== 'Total' && r.faltaInterna > 0).sort((a, b) => b.faltaInterna - a.faltaInterna).slice(0, 3);
+    el.textContent = 'Em ' + AG.MESES[t.mes] + ', os maiores valores em aberto da meta interna são ' + st.map((r) => r.loja + ' (' + f.brl(r.faltaInterna) + '; ' + f.brl(r.porDiaInterna) + '/dia)').join(', ') + '. Em % todos estão no início do mês; em valor, o resultado do varejo depende principalmente dessas lojas.';
+  });
+  dash.draw('i3', (el) => {
+    const b = AG.rows('base').filter((r) => r.loja !== 'Total' && r.fechado && r.atInterna != null);
+    if (!b.length) { el.textContent = '—'; return; }
+    const n = d3.max(d3.rollups(b, (v) => v.length, (r) => r.loja), (d) => d[1]);
+    const by = d3.rollups(b, (v) => v.filter((r) => r.atInterna >= 1).length, (r) => r.loja).sort((a, c) => c[1] - a[1]);
+    const tb = AG.rows('base').filter((r) => r.loja === 'Total' && r.fechado && r.atInterna != null);
+    const tbat = tb.filter((r) => r.atInterna >= 1).map((r) => AG.MES3[r.mes]);
+    el.textContent = 'Em ' + n + ' meses fechados, o varejo bateu a meta interna ' + tbat.length + ' vezes (' + tbat.join(', ') + '). Por loja: ' + by.map(([l, v]) => l + ' ' + v + '×').join(' · ') + '.';
+  });
+  dash.draw('i4', (el) => {
+    const fech = AG.rows('base').filter((r) => r.loja === 'Total' && r.fechado).map((r) => r.mes);
+    const ate = Math.max(...fech);
+    const a = AG.rows('acumulado').filter((r) => r.ate === ate && r.loja !== 'Total' && r.varFin != null).sort((x, y) => y.varFin - x.varFin);
+    if (!a.length) { el.textContent = '—'; return; }
+    el.textContent = 'Jan–' + AG.MES3[ate] + ': ' + a.map((r) => r.loja + ' ' + f.var(r.varFin)).join(' · ') + '. (MAV abriu em 2026 e fica fora da comparação.)';
+  });
+  const tAc = () => { const fech = AG.rows('base').filter((r) => r.loja === 'Total' && r.fechado).map((r) => r.mes); return AG.rows('acumulado').find((r) => r.ate === Math.max(...fech) && r.loja === 'Total'); };
+  dash.draw('i5-bm', (el) => { const t = tAc(); el.textContent = t ? f.var(t.varBM) : '—'; });
+  dash.draw('i5-bol', (el) => { const t = tAc(); el.textContent = t ? f.var(t.varBol) : '—'; });
+  dash.draw('i5-txt', (el) => {
+    const t = tAc(); if (!t) { el.textContent = '—'; return; }
+    el.textContent = t.varBM > t.varBol ? 'O crescimento veio mais do valor por compra do que do número de compras.' : 'O crescimento veio mais do número de compras do que do valor por compra.';
+  });
+  dash.draw('i6-zo', (el) => {
+    const fech = AG.rows('base').filter((r) => r.loja === 'Total' && r.fechado).map((r) => r.mes);
+    const a = AG.rows('acumulado').find((r) => r.ate === Math.max(...fech) && r.loja === 'MAV');
+    el.textContent = a && a.realFechado ? f.pct(a.metaRedeFechado / a.realFechado) : '—';
+  });
+  dash.draw('i7', (el) => {
+    const fech = AG.rows('base').filter((r) => r.loja === 'Total' && r.fechado).map((r) => r.mes);
+    const a = AG.rows('acumulado').filter((r) => r.ate === Math.max(...fech) && r.loja !== 'Total' && r.varBol != null && r.varBol < -0.15 && r.varBM > 0).sort((x, y) => x.varBol - y.varBol);
+    el.textContent = a.length ? a.map((r) => r.loja + ' (boletos ' + f.var(r.varBol) + ', BM ' + f.var(r.varBM) + ')').join(' · ') : 'nenhuma no momento';
+  });
+  dash.draw('i8', (el) => {
+    const fech = AG.rows('base').filter((r) => r.loja === 'Total' && r.fechado).map((r) => r.mes);
+    const a = AG.rows('acumulado').filter((r) => r.ate === Math.max(...fech) && r.loja !== 'Total' && r.pd25 && r.pd26).map((r) => ({ ...r, vpd: r.pd26 / r.pd25 - 1 })).sort((x, y) => y.vpd - x.vpd).slice(0, 2);
+    el.textContent = a.length ? 'Evidência: ' + a.map((r) => r.loja + ' aumentou as peças por boleto em ' + f.var(r.vpd) + ' e o boleto médio em ' + f.var(r.varBM)).join('; ') + ' no acumulado.' : '—';
+  });
+})();
+</script>
+
+<!-- ======================= META DIÁRIA ======================= -->
+<script>
+(() => {
+  const brl = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 });
+  const R = (v) => v == null ? '—' : brl.format(Math.round(v));
+  const P = (v) => v == null ? '—' : Math.round(v * 100) + '%';
+  const DIAS = ['domingo','segunda-feira','terça-feira','quarta-feira','quinta-feira','sexta-feira','sábado'];
+  const MES = ['','janeiro','fevereiro','março','abril','maio','junho','julho','agosto','setembro','outubro','novembro','dezembro'];
+  const mk = (tag, cls, txt) => { const e = document.createElement(tag); if (cls) e.className = cls; if (txt != null) e.textContent = txt; return e; };
+  const rows = () => AG.rows('diaria');
+  const sel = () => { const l = AG.loja(); return rows().some((r) => r.loja === l) ? l : 'Total'; };
+  const SVGNS = 'http://www.w3.org/2000/svg';
+  const ring = (pct, cls, col, size) => {
+    const svg = document.createElementNS(SVGNS, 'svg'); svg.setAttribute('viewBox', '0 0 120 120'); svg.setAttribute('class', cls || 'dd-ring');
+    const c = (op, dash) => { const e = document.createElementNS(SVGNS, 'circle'); e.setAttribute('cx', 60); e.setAttribute('cy', 60); e.setAttribute('r', 50); e.setAttribute('fill', 'none'); e.style.stroke = col; e.setAttribute('stroke-opacity', op); e.setAttribute('stroke-width', 12); e.setAttribute('stroke-linecap', 'round'); if (dash != null) { e.setAttribute('stroke-dasharray', dash + ' 400'); e.setAttribute('transform', 'rotate(-90 60 60)'); } svg.appendChild(e); };
+    c(.16); c(1, Math.max(0.001, Math.min(1, pct || 0)) * 2 * Math.PI * 50);
+    const t = document.createElementNS(SVGNS, 'text'); t.setAttribute('x', 60); t.setAttribute('y', 60); t.setAttribute('text-anchor', 'middle'); t.setAttribute('dominant-baseline', 'central'); t.setAttribute('font-size', size || 26); t.textContent = P(pct || 0); svg.appendChild(t);
+    return svg;
+  };
+  const CORES = ['var(--ag-blue)', 'var(--ag-teal)', 'var(--ag-sage)', 'var(--c-des)'];
+  const corLoja = () => 'var(--ag-teal)';
+  dash.draw('dd-date', (el) => {
+    const r = rows().find((x) => x.loja === 'Total');
+    const h = new Date(AG_HOJE);
+    let s = DIAS[h.getUTCDay()] + ', ' + h.getUTCDate() + ' de ' + MES[h.getUTCMonth() + 1];
+    if (r && r.diasRest != null) s += ' · faltam ' + r.diasRest + ' dias no mês';
+    el.textContent = s.charAt(0).toUpperCase() + s.slice(1);
+  });
+  dash.draw('dd-chips', (el) => {
+    const ls = AG.lojasOrd.filter((l) => rows().some((r) => r.loja === l));
+    el.replaceChildren();
+    [['Total', 'Todas as lojas'], ...ls.map((l) => [l, l])].forEach(([id, lab]) => {
+      const b = mk('button', 'dd-chip', lab); b.type = 'button'; b.setAttribute('aria-pressed', String(sel() === id)); b.title = AG.NOMES[id] || '';
+      b.onclick = () => dash.setParams({ loja: id }); el.appendChild(b);
+    });
+  });
+  const focus = (r) => {
+    const w = mk('div', 'dd-focus');
+    const h = mk('div', 'dd-hero'); const hc = 'var(--ag-blue)'; h.style.setProperty('--hc', hc);
+    const top = mk('div', 'dd-hero-top'); top.append(mk('span', 'dd-tag', 'Desafio do dia'), mk('span', 'dd-store', r.loja === 'Total' ? 'Todas as lojas' : AG.NOMES[r.loja])); h.appendChild(top);
+    const mid = mk('div', 'dd-hero-mid');
+    if (r.desafio != null) {
+      mid.appendChild(ring(r.desafioPct, 'dd-ring', hc));
+      const txt = mk('div'); const nums = mk('div', 'dd-nums');
+      const col = (lab, cls, val) => { const d = mk('div'); d.append(mk('div', 'dd-lbl', lab), mk('div', cls, val)); nums.appendChild(d); };
+      col('Meta do dia', 'dd-big', R(r.desafio));
+      col('Vendido hoje', 'dd-sold', R(r.desafioReal));
+      const bateu = r.desafioFalta === 0;
+      col(bateu ? 'Desafio' : 'Falta', 'dd-falta' + (bateu ? ' ok' : ''), bateu ? 'Batido! 🎉' : R(r.desafioFalta));
+      txt.appendChild(nums);
+      if (!(r.desafioReal > 0)) txt.appendChild(mk('div', 'dd-sub', 'Ainda sem vendas lançadas hoje'));
+      mid.appendChild(txt);
+    } else mid.appendChild(mk('div', 'dd-sub', 'A gestora ainda não definiu o desafio de hoje.'));
+    h.appendChild(mid); w.appendChild(h); return w;
+  };
+  const tile = (r) => {
+    const t = mk('div', 'dd-tile'); const tc = corLoja(r.loja); t.style.setProperty('--tc', tc); t.onclick = () => dash.setParams({ loja: r.loja });
+    const h = mk('div', 'dd-tile-h'); h.append(mk('strong', null, r.loja), mk('span', null, AG.NOMES[r.loja])); t.appendChild(h);
+    const body = mk('div', 'dd-tile-body');
+    body.appendChild(ring(r.desafioPct, 'dd-tring', tc, 28));
+    const n = mk('div', 'dd-tnums');
+    const a = mk('div'); a.append(mk('div', 'dd-tl', 'Desafio'), mk('div', 'dd-tmeta', r.desafio != null ? R(r.desafio) : '—'));
+    const b = mk('div'); b.append(mk('div', 'dd-tl', 'Vendido hoje'), mk('div', 'dd-tsold', r.desafio != null ? R(r.desafioReal) : '—'));
+    n.append(a, b); body.appendChild(n); t.appendChild(body);
+    if (r.desafio != null) { const ok = r.desafioFalta === 0; t.appendChild(mk('span', 'dd-tfoot' + (ok ? ' ok' : ''), ok ? '✓ Desafio batido' : 'Faltam ' + R(r.desafioFalta))); }
+    return t;
+  };
+  dash.draw('dd-body', (el) => {
+    el.replaceChildren(); const rs = rows(); if (!rs.length) { el.textContent = '—'; return; }
+    const s = sel();
+    if (s !== 'Total') { el.appendChild(focus(rs.find((r) => r.loja === s))); return; }
+    el.appendChild(focus(rs.find((r) => r.loja === 'Total')));
+    const g = mk('div', 'dd-grid'); g.style.marginTop = '18px';
+    AG.lojasOrd.forEach((l) => { const r = rs.find((x) => x.loja === l); if (r) g.appendChild(tile(r)); });
+    el.appendChild(g);
+  });
+})();
+</script>
+
+<!-- ======================= META ANUAL ======================= -->
+<script>
+(() => {
+  const { f } = AG;
+  const row = () => AG.rows('anual').find((r) => r.loja === AG.loja());
+  const mk = (tag, cls, txt) => { const e = document.createElement(tag); if (cls) e.className = cls; if (txt != null) e.textContent = txt; return e; };
+  dash.draw('ano', (el) => {
+    const r = row(); el.replaceChildren(); if (!r) { el.textContent = '—'; return; }
+    [['Interna', 'Meta anual interna (grupo)', 'var(--ag-teal)'], ['Rede', 'Meta anual da rede (franqueadora)', 'var(--ag-blue)']].forEach(([k, tt, col]) => {
+      const c = mk('div', 'yr-card'); c.style.setProperty('--yc', col);
+      const top = mk('div', 'yr-top'); top.append(mk('span', 'yr-tt', tt), mk('span', 'yr-who', r.loja === 'Total' ? 'Todas as lojas' : r.loja + ' · ' + AG.NOMES[r.loja])); c.appendChild(top);
+      const at = r['at' + k], meta = r['meta' + k], falta = r['falta' + k];
+      const main = mk('div', 'yr-main'); const pc = mk('span', 'yr-pct', f.pct1(at));
+      const esp = r['esp' + k], ritmo = esp ? r.real / esp : null, pe = meta ? esp / meta : 0;
+      pc.style.color = at >= 1 || ritmo >= 1 ? 'var(--ag-ok)' : ritmo >= 0.95 ? 'var(--ag-warn)' : 'var(--ag-bad)';
+      main.append(pc, mk('span', 'yr-of', 'atingido · ' + f.brl(r.real) + ' de ' + f.brl(meta))); c.appendChild(main);
+      const bar = mk('div', 'yr-bar'); const fill = mk('i'); fill.style.width = Math.min(100, (at || 0) * 100) + '%';
+      const mark = mk('b'); mark.style.left = Math.min(100, pe * 100) + '%'; bar.append(fill, mark); c.appendChild(bar);
+      c.appendChild(mk('div', 'yr-legend', 'Traço = onde deveria estar hoje pela meta: ' + f.brl(esp) + ' (' + f.pct1(pe) + ' da meta do ano). ' + (r.real >= esp ? 'Está ' + f.brl(r.real - esp) + ' à frente.' : 'Está ' + f.brl(esp - r.real) + ' atrás.')));
+      const g = mk('div', 'yr-grid');
+      const k1 = (a, b, s) => { const d = mk('div', 'yr-k'); d.append(mk('span', null, a), mk('strong', null, b)); if (s) d.appendChild(mk('small', null, s)); g.appendChild(d); };
+      k1('Meta do ano', f.brl(meta), r['meses' + k] < 12 ? 'soma de ' + r['meses' + k] + ' meses com meta' : 'jan a dez');
+      k1('Realizado 2026', f.brl(r.real), 'até hoje');
+      k1(falta > 0 ? 'Falta' : 'Acima da meta', f.brl(Math.abs(falta)), falta > 0 ? f.pct(falta / meta) + ' da meta' : 'meta do ano batida');
+      k1('Por dia até 31/12', falta > 0 ? f.brl(r['porDia' + k]) : '—', r.diasRest + ' dias de loja aberta');
+      c.appendChild(g);
+      el.appendChild(c);
+    });
+  });
+  dash.draw('note-ano', (el) => {
+    const r = row(); if (!r) { el.textContent = '—'; return; }
+    const quem = r.loja === 'Total' ? 'O varejo' : AG.NOMES[r.loja];
+    let s = quem + ' já fez ' + f.pct1(r.atInterna) + ' da meta anual interna e ' + f.pct1(r.atRede) + ' da meta da rede. Pelas metas mensais, hoje deveria ter vendido ' + f.brl(r.espInterna) + ' (interna): ' + (r.real >= r.espInterna ? f.brl(r.real - r.espInterna) + ' à frente. ' : f.brl(r.espInterna - r.real) + ' atrás. ');
+    if (r.faltaInterna > 0) s += 'Para fechar a meta interna, faltam ' + f.brl(r.faltaInterna) + ': ' + f.brl(r.porDiaInterna) + ' por dia nos ' + r.diasRest + ' dias de loja aberta até 31/12.';
+    else s += 'A meta anual interna já foi batida.';
+    if (r.mesesInterna < 12) s += ' Atenção: só ' + r.mesesInterna + ' meses têm meta interna na planilha.';
+    el.textContent = s;
+  });
+  dash.draw('ano-tbody', (tb) => {
+    const rs = AG.rows('anual'); tb.replaceChildren();
+    const ord = [...AG.lojasOrd, 'Total'];
+    [...rs].sort((a, b) => ord.indexOf(a.loja) - ord.indexOf(b.loja)).forEach((r) => {
+      const tr = document.createElement('tr'); tr.dataset.key = r.loja;
+      if (r.loja === 'Total') tr.className = 'tot'; else if (r.loja === AG.loja()) tr.className = 'sel';
+      const td = (txt, c) => { const e = document.createElement('td'); if (c) { const sp = document.createElement('span'); sp.className = c; sp.textContent = txt; e.appendChild(sp); } else e.textContent = txt; tr.appendChild(e); };
+      const fal = (v) => v <= 0 ? '+' + f.brl(-v) : f.brl(v);
+      const st = (k) => { const p = r['at' + k], rt = r['esp' + k] ? r.real / r['esp' + k] : null; return p == null ? '' : p >= 1 || rt >= 1 ? 'ok' : rt >= 0.95 ? 'warn' : 'bad'; };
+      td(r.loja); td(f.brl(r.metaInterna)); td(f.brl(r.real)); td(f.pct1(r.atInterna), 'pill ' + st('Interna')); td(fal(r.faltaInterna), r.faltaInterna <= 0 ? 'pos' : '');
+      td(f.brl(r.metaRede)); td(f.pct1(r.atRede), 'pill ' + st('Rede')); td(fal(r.faltaRede), r.faltaRede <= 0 ? 'pos' : '');
+      td(String(r.diasRest)); td(r.faltaInterna > 0 ? f.brl(r.porDiaInterna) : '—'); td(r.faltaRede > 0 ? f.brl(r.porDiaRede) : '—');
+      tr.style.cursor = 'pointer'; tr.onclick = () => dash.setParams({ loja: r.loja });
+      tb.appendChild(tr);
+    });
+  });
+  dash.draw('note-ano-lojas', (el) => {
+    const rs = AG.rows('anual').filter((r) => r.loja !== 'Total' && r.atInterna != null);
+    if (!rs.length) { el.textContent = '—'; return; }
+    const o = [...rs].sort((a, b) => b.atInterna - a.atInterna);
+    const big = [...rs].sort((a, b) => b.faltaInterna - a.faltaInterna).slice(0, 3);
+    el.textContent = 'Mais adiantada na meta anual interna: ' + o[0].loja + ' (' + f.pct1(o[0].atInterna) + '); mais atrasada: ' + o[o.length - 1].loja + ' (' + f.pct1(o[o.length - 1].atInterna) + '). Em valor, o que mais falta está em ' + big.map((r) => r.loja + ' (' + f.brl(r.faltaInterna) + ')').join(', ') + '. Cor do %: verde = no ritmo ou acima do esperado até hoje pelas metas mensais; âmbar = até 5% abaixo; vermelho = mais de 5% abaixo.';
+  });
+})();
+</script>
+
+<!-- ======================= METAS DA EQUIPE ======================= -->
+<script>
+(() => {
+  const { f } = AG;
+  const DIAS = ['domingo','segunda','terça','quarta','quinta','sexta','sábado'];
+  const hoje = () => new Date(AG_HOJE);
+  const tot = () => AG.rows('ritmo').find((r) => r.mes === AG.mesAtual() && r.loja === 'Total');
+  dash.draw('vd-titulo', (el) => {
+    const t = tot(); if (!t) { el.textContent = '—'; return; }
+    const h = hoje();
+    el.textContent = t.diasRest > 0 ? DIAS[h.getUTCDay()] + ', ' + String(h.getUTCDate()).padStart(2, '0') + '/' + String(h.getUTCMonth() + 1).padStart(2, '0') : AG.MESES[t.mes] + ' (encerrado)';
+  });
+  dash.draw('vd-total', (el) => {
+    const t = tot(); if (!t) { el.textContent = '—'; return; }
+    if (AG.loja() !== 'Total') { const r = AG.rows('ritmo').find((x) => x.mes === t.mes && x.loja === AG.loja()); el.textContent = r && r.diasRest > 0 ? f.brl(r.porDiaInterna) : '—'; return; }
+    el.textContent = t.diasRest > 0 ? f.brl(t.porDiaInterna) : '—';
+  });
+  dash.draw('vd-total-sub', (el) => {
+    const t = tot(); if (!t) { el.textContent = '—'; return; }
+    const r = AG.loja() === 'Total' ? t : AG.rows('ritmo').find((x) => x.mes === t.mes && x.loja === AG.loja());
+    if (!r) { el.textContent = '—'; return; }
+    const quem = AG.loja() === 'Total' ? 'Todas as lojas' : AG.loja() + ' · ' + AG.NOMES[AG.loja()];
+    el.textContent = quem + ' · ' + (r.faltaInterna > 0 ? 'faltam ' + f.brl(r.faltaInterna) + ' de ' + f.brl(r.metaInterna) : 'meta de ' + f.brl(r.metaInterna) + ' batida') + ' · ' + r.diasRest + ' dias de loja aberta';
+  });
+  dash.draw('vd-cards', (el) => {
+    const mes = AG.mesAtual(), sel = AG.loja();
+    let rs = AG.rows('ritmo').filter((r) => r.mes === mes && r.loja !== 'Total' && r.metaInterna != null);
+    if (sel !== 'Total') rs = rs.filter((r) => r.loja === sel);
+    rs.sort((a, b) => AG.lojasOrd.indexOf(a.loja) - AG.lojasOrd.indexOf(b.loja));
+    el.replaceChildren(); el.classList.toggle('solo', sel !== 'Total');
+    if (!rs.length) { el.textContent = '—'; return; }
+    const sem = AG.rows('semanas').filter((r) => r.mes === mes && r.semana === 1);
+    const dd = (iso) => iso.slice(8, 10) + '/' + iso.slice(5, 7);
+    const mk = (tag, cls, txt) => { const e = document.createElement(tag); if (cls) e.className = cls; if (txt != null) e.textContent = txt; return e; };
+    rs.forEach((r) => {
+      const c = mk('div', 'vd-card');
+      c.onclick = () => dash.setParams({ loja: sel === 'Total' ? r.loja : 'Total' });
+      const top = mk('div', 'vd-top'); top.append(mk('span', 'vd-loja', r.loja), mk('span', 'vd-nome', AG.NOMES[r.loja])); c.appendChild(top);
+      const box = mk('div'); box.append(mk('div', 'vd-lbl', 'Meta de hoje'), mk('div', 'vd-hoje', r.diasRest > 0 ? (r.faltaInterna > 0 ? f.brl(r.porDiaInterna) : 'Meta batida!') : '—')); c.appendChild(box);
+      const pct = r.metaInterna ? Math.max(0, r.real / r.metaInterna) : 0;
+      const bar = mk('div', 'vd-bar'); const i = mk('i', pct >= 1 ? 'done' : ''); i.style.width = Math.min(100, pct * 100) + '%'; bar.appendChild(i);
+      const prog = mk('div'); prog.append(mk('div', 'vd-row'), bar);
+      prog.firstChild.append(mk('span', null, 'Mês: ' + f.pct(pct) + ' da meta'), mk('b', null, f.brl(r.real) + ' / ' + f.brl(r.metaInterna)));
+      c.appendChild(prog);
+      const row = (a, b) => { const d = mk('div', 'vd-row'); d.append(mk('span', null, a), mk('b', null, b)); c.appendChild(d); };
+      row('Falta no mês', r.faltaInterna > 0 ? f.brl(r.faltaInterna) : 'nada — acima em ' + f.brl(-r.faltaInterna));
+      const w = sem.find((x) => x.loja === r.loja);
+      if (w) row('Meta da semana (até ' + dd(w.fim) + ')', f.brl(w.metaInterna));
+      row('Dias de loja aberta', String(r.diasRest));
+      const ya = AG.rows('anual').find((x) => x.loja === r.loja);
+      if (ya) { const yd = mk('div', 'vd-year'); yd.append(document.createTextNode('Ano (meta interna): '), mk('b', null, f.pct1(ya.atInterna)), document.createTextNode(ya.faltaInterna > 0 ? ' · faltam ' + f.brl(ya.faltaInterna) : ' · meta do ano batida')); c.appendChild(yd); }
+      if (r.diaMeta != null) {
+        const okd = (r.diaReal || 0) >= r.diaMeta;
+        c.appendChild(mk('span', 'vd-chip ' + (okd ? 'ok' : 'no'), (okd ? '✓ Último dia: bateu' : '✗ Último dia: não bateu') + ' (' + f.brl(r.diaReal) + ' / ' + f.brl(r.diaMeta) + ')'));
+      }
+      el.appendChild(c);
+    });
+  });
+})();
+</script>
+
+<script>
+dash.draw('upd', (el) => {
+  const m = dash._meta();
+  const hh = (d) => d.toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', timeZone: 'America/Sao_Paulo' });
+  el.classList.toggle('err', !!m.erro);
+  if (m.erro && !m.at) el.textContent = 'Não foi possível ler os dados: ' + m.erro;
+  else if (m.erro) el.textContent = 'Última leitura: ' + hh(m.at) + ' · falha ao atualizar agora, tentando de novo em 5 min.';
+  else if (m.at) el.textContent = 'Dados fictícios · demonstração';
+  else el.textContent = 'Carregando dados…';
+});
+// tema escuro também no fundo da página
+document.querySelectorAll('[data-theme-toggle]').forEach((b) => b.addEventListener('click', () => document.body.classList.toggle('dark', document.querySelector('.ag').classList.contains('dark'))));
+document.body.classList.toggle('dark', !!document.querySelector('.ag.dark'));
+dash._start();
+</script>
+</body>
+</html>
