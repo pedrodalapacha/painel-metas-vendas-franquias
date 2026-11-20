@@ -4,6 +4,8 @@ Painel web que mostra, todos os dias, quanto cada loja precisa vender para fecha
 
 > **Dados fictícios.** Esta é a versão de portfólio. A empresa (Grupo Horizonte), a rede (Aurora Cosméticos), as lojas e todos os números são inventados e foram gerados pelo script `scripts/gerar_dados.py`. A lógica do painel é a mesma da versão usada no dia a dia. A data de "hoje" está fixada em 18/11/2026 para a demonstração funcionar a qualquer momento.
 
+**[Abrir o painel ao vivo](https://painel-metas-vendas-franquias.vercel.app)**
+
 ![Meta diária](docs/img/01_meta_diaria.png)
 
 ## O problema
@@ -71,7 +73,7 @@ Depois abra http://localhost:8000. Para gerar outros dados fictícios, edite os 
 
 ## Ferramentas
 
-JavaScript, D3.js, HTML e CSS · Python (geração de dados) · Google Planilhas como fonte · Vercel (hospedagem e função serverless) · desenvolvido com apoio de IA (Claude)
+JavaScript, D3.js, HTML e CSS · Python (geração de dados) · Google Planilhas como fonte · Vercel (hospedagem e função serverless; esta demonstração está publicada em https://painel-metas-vendas-franquias.vercel.app) · desenvolvido com apoio de IA (Claude)
 
 ## Autor
 
